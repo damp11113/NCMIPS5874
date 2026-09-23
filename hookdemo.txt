@@ -1,0 +1,19 @@
+echo '### hookboot: normal boot, plus OSD graphics demo from inside the firmware ###'
+usb start
+setenv avenv_AVCPU_CONFIG 128M_AD_HEVC
+setenv avenv_VIDEO_FW_CFG_SIZE 0x31ac000
+setenv avenv_VIDEO_FW_CFG_ADDR 0xa4b58000
+setenv avenv_AUDIO_FW_CFG_SIZE 0x180000
+setenv avenv_AUDIO_FW_CFG_ADDR 0x849c8000
+setenv avenv_VID_SD_WR_BACK_SIZE 0x32a000
+setenv avenv_VID_SD_WR_BACK_FIELD_NO 0x4
+setenv avenv_VID_SD_WR_BACK_ADDR 0xa469dc00
+setenv avenv_SD_ENABLE 1
+loadimg 1 lzma 0x300000 0x81500000 0x80008000
+loadimg 1 lzma 0xb0000 0x81500000 0x87e10000
+av_launch 0x87e10000
+cpu 1 release 0x87e10000
+fatload usb 0 0x80004000 hook_demo.bin
+fatload usb 0 0x82000000 hookpatch.bin
+go 0x82000000
+go 0x80008000

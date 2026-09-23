@@ -1,0 +1,51 @@
+# ============================================================================
+# Build outputs (regenerate with buildc.sh / buildgfx.sh / buildhook.sh)
+# ============================================================================
+*.o
+*.elf
+*.bin
+*.a
+build_*/
+
+# U-Boot script images, generated from the .txt sources by mkscript.py
+*.scr
+
+# ============================================================================
+# Development runs and captured output
+# ============================================================================
+# Serial console captures (MobaXterm logs, pasted runs)
+*.log
+*.rtf
+MobaXterm_*
+run[0-9]*.txt
+tx[0-9]*.txt
+
+# Register snapshot diffs and analysis output (regenerate with the .py tools)
+snapdiff.txt
+accessors_*.txt
+app_strings.txt
+avcpu_strings.txt
+
+# ============================================================================
+# Original firmware and images extracted from it
+# ----------------------------------------------------------------------------
+# NOT committed on purpose: the flash dump holds private data (saved WiFi
+# names/passwords, vendor FTP login, DRM keys) and the vendor's copyrighted
+# code. Keep backup.bin safe elsewhere (e.g. on the USB stick) — it is the
+# only way to restore the box. Delete this section to track them anyway.
+# ============================================================================
+backup*.bin
+app_ram.bin
+uboot_part.bin
+avcpu.bin
+
+# ============================================================================
+# Editor / OS clutter
+# ============================================================================
+__pycache__/
+*.pyc
+*:Zone.Identifier
+*.Zone.Identifier
+Thumbs.db
+desktop.ini
+.vscode/
