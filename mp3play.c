@@ -32,7 +32,7 @@
 #include "ir.h"
 #include "osdsetup.h"
 #include "mp3stream.h"
-#include "strbuf.h"
+#include "sdk/strbuf.h"
 
 #define MP3_MAX_END     0x83000000      /* OSD header + pixels start here */
 #define TAG_LEN         64

@@ -5,9 +5,9 @@
 # doomgeneric sources (GPL-2.0-or-later, not in git) go in doom/doomgeneric:
 #   git clone https://github.com/ozkl/doomgeneric.git doomgeneric
 #   (tested with commit dcb7a8d)
-# Uses our own C library (libc/), soft-float (../softfp), start.c and
-# link.ld from the project root. The WAD is not built in: DOOM.WAD is read
-# from the USB stick at start-up.
+# Built on the box SDK (../sdk: runtime, C library, box headers) with
+# soft-float (../softfp) and link.ld from the project root. The WAD is not
+# built in: DOOM.WAD is read from the USB stick at start-up.
 set -e
 cd "$(dirname "$0")"
 CROSS=mipsel-linux-gnu-
@@ -17,7 +17,7 @@ GCCINC=$(${CROSS}gcc -print-file-name=include)
 
 CFLAGS="-march=mips32r2 -EL -msoft-float -O2 -ffreestanding -mno-abicalls -fno-pic -G 0 \
     -ffunction-sections -fdata-sections -fno-strict-aliasing -fno-asynchronous-unwind-tables \
-    -nostdinc -isystem $GCCINC -Ilibc/include -I$DG -I.. \
+    -nostdinc -isystem $GCCINC -I../sdk/libc/include -I$DG -I../sdk -I.. \
     -DCMAP256 -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -DFEATURE_SOUND"
 
 SRC="dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_main d_mode d_net
@@ -76,19 +76,19 @@ for f in $DEH_SRC; do
     fi
     DEH_OBJ="$DEH_OBJ $OBJ/deh/$b.o"
 done
-${CROSS}gcc $CFLAGS -Wall -c libc/libc.c -o $OBJ/libc.o
+${CROSS}gcc $CFLAGS -Wall -c ../sdk/libc/libc.c -o $OBJ/libc.o
 ${CROSS}gcc $CFLAGS -Wall -c dg_nc5874.c -o $OBJ/dg_nc5874.o
 ${CROSS}gcc $CFLAGS -Wall -c dg_sound.c -o $OBJ/dg_sound.o
 ${CROSS}gcc $CFLAGS -Wall -c dg_music.c -o $OBJ/dg_music.o
-${CROSS}gcc $CFLAGS -Wall -c opl.c -o $OBJ/opl.o
+${CROSS}gcc $CFLAGS -Wall -c ../sdk/opl.c -o $OBJ/opl.o
 ${CROSS}gcc $CFLAGS -Wall -c dg_debug.c -o $OBJ/dg_debug.o
-${CROSS}gcc $CFLAGS -c libc/ub_exports.S -o $OBJ/ub_exports.o
-${CROSS}gcc $CFLAGS -Wall -c ../start.c -o $OBJ/start.o
+${CROSS}gcc $CFLAGS -c ../sdk/libc/ub_exports.S -o $OBJ/ub_exports.o
+${CROSS}gcc $CFLAGS -Wall -c ../sdk/runtime.c -o $OBJ/runtime.o
 
 ${CROSS}gcc -EL -msoft-float -nostdlib -static -no-pie \
     -Wl,--gc-sections -Wl,--build-id=none -Wl,--no-warn-rwx-segments \
     -Wl,--require-defined=_start -Wl,--defsym=LOAD_ADDR=0x80008000 -T ../link.ld \
-    -o doom.elf $OBJ/start.o $OBJ/dg_nc5874.o $OBJ/dg_sound.o $OBJ/dg_music.o $OBJ/opl.o $OBJ/dg_debug.o $(for s in $SRC; do echo $OBJ/$s.o; done) \
+    -o doom.elf $OBJ/runtime.o $OBJ/dg_nc5874.o $OBJ/dg_sound.o $OBJ/dg_music.o $OBJ/opl.o $OBJ/dg_debug.o $(for s in $SRC; do echo $OBJ/$s.o; done) \
     $DEH_OBJ $OBJ/libc.o $OBJ/ub_exports.o ../softfp/libsoftfp.a -lgcc 2>&1 \
     | grep -vE "uses -mhard-float|linking abicalls files with non-abicalls" || true
 ${CROSS}objcopy -O binary doom.elf doom.bin

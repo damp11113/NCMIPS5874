@@ -1,15 +1,18 @@
 /*
- * Minimal C library for Doom (doomgeneric) on the NC5874 box, running
- * under U-Boot with no OS. Only what Doom uses:
+ * Minimal C library for NC5874 box apps (SDK), running under U-Boot with
+ * no OS. Written for Doom (doomgeneric), so it covers what Doom uses:
  *   - console output through U-Boot (ub_putc, ub_exports.S)
  *   - malloc: first-fit heap with coalescing over free RAM
  *   - stdio: read-only files held in RAM; fopen gets the whole file
- *     from the platform layer (dg_load_file: USB stick via usbfat.h).
+ *     from the SDK runtime (sdk_load_file: USB stick via usbfat.h;
+ *     relative paths are inside the app's folder).
  *     Writing files fails cleanly (fopen returns NULL).
  *   - printf family (d i u x X o c s p f %, flags, width, precision, l ll z)
  *   - string/ctype, strtol/atoi/atof, a small sscanf, qsort
  *   - math for Doom's start-up tables (sin, tan, atan) in soft-float
- *   - exit () returns to the platform main (dg_exit)
+ *   - exit () returns to whoever started the app (sdk_exit, runtime.c)
+ *   - sdk_libc_reset (): forget the heap and cached files (the launcher
+ *     calls it after an app, which used the same heap RAM)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,16 +31,23 @@ void ub_putc (char c);
 unsigned long ub_get_timer (unsigned long base);
 void ub_udelay (unsigned long us);
 
-/* Platform layer (dg_nc5874.c) */
-int dg_load_file (const char *name, unsigned char **data, long *size);
-void dg_exit (int code) __attribute__ ((noreturn));
+/* SDK runtime (runtime.c) */
+int sdk_load_file (const char *path, unsigned char **data, long *size);
+void sdk_exit (int code) __attribute__ ((noreturn));
 
 int errno;
 
 /* ---- heap ---- */
 
-#define HEAP_START  0x81600000u     /* above U-Boot */
-#define HEAP_END    0x837f0000u     /* audio buffers at 0x03800000, OSD 0x03a00000 */
+/*
+ * The heap is a list of free / used blocks over one or more RAM regions
+ * (the SDK runtime adds them with sdk_heap_region () before main): the
+ * main area above U-Boot, the unused rest of the app's own load area, and
+ * the AV core's video memory when "big memory" mode gave it back. Blocks
+ * of different regions are never adjacent, so they are never merged.
+ */
+#define HEAP_START  0x81600000u     /* default region if none was added */
+#define HEAP_END    0x843f0000u
 
 typedef struct block {
     size_t size;                    /* payload bytes */
@@ -46,14 +56,46 @@ typedef struct block {
     size_t pad;                     /* 16-byte header keeps payload 8-aligned */
 } block_t;
 
+#define MAX_REGIONS 4
+static struct { size_t start, end; } regions[MAX_REGIONS];
+static int nregions;
 static block_t *heap_head;
-size_t heap_in_use;
+size_t heap_in_use, heap_total;
+
+/* Add [start, end) to the heap (call before the first malloc) */
+void sdk_heap_region (size_t start, size_t end) {
+    start = (start + 15u) & ~15u;
+    end &= ~15u;
+    if (nregions < MAX_REGIONS && end > start + 64 * 1024) {
+        regions[nregions].start = start;
+        regions[nregions].end = end;
+        nregions++;
+    }
+}
 
 static void heap_init (void) {
-    heap_head = (block_t *) HEAP_START;
-    heap_head->size = HEAP_END - HEAP_START - sizeof (block_t);
-    heap_head->used = 0;
-    heap_head->next = 0;
+    block_t *prev = 0;
+    int i;
+
+    if (nregions == 0) {
+        sdk_heap_region (HEAP_START, HEAP_END);
+    }
+    heap_head = 0;
+    heap_total = 0;
+    for (i = 0; i < nregions; i++) {
+        block_t *b = (block_t *) regions[i].start;
+
+        b->size = regions[i].end - regions[i].start - sizeof (block_t);
+        b->used = 0;
+        b->next = 0;
+        heap_total += b->size;
+        if (prev) {
+            prev->next = b;
+        } else {
+            heap_head = b;
+        }
+        prev = b;
+    }
 }
 
 void *malloc (size_t n) {
@@ -494,23 +536,18 @@ int system (const char *cmd) {
     return -1;
 }
 
-int atexit (void (*fn) (void)) {
-    (void) fn;
-    return 0;
-}
-
 void exit (int code) {
-    dg_exit (code);
+    sdk_exit (code);
 }
 
 void abort (void) {
     printf ("abort ()\n");
-    dg_exit (3);
+    sdk_exit (3);
 }
 
 void __assert_fail (const char *expr, const char *file, int line) {
     printf ("assert failed: %s (%s:%d)\n", expr, file, line);
-    dg_exit (3);
+    sdk_exit (3);
 }
 
 /* ---- math (start-up tables only) ---- */
@@ -654,16 +691,17 @@ FILE *stdout = &con_out, *stderr = &con_out, *stdin = &con_in;
 
 /* Loaded files stay cached (Doom opens the WAD more than once) */
 #define MAX_CACHED 8
-static struct { char name[64]; unsigned char *data; long size; } file_cache[MAX_CACHED];
+static struct { char name[128]; unsigned char *data; long size; } file_cache[MAX_CACHED];
 
-static const char *base_name (const char *p) {
-    const char *s = strrchr (p, '/');
-
-    return s ? s + 1 : p;
+void sdk_libc_reset (void) {
+    heap_head = 0;                  /* rebuilt from the same regions on the next malloc */
+    heap_in_use = 0;
+    memset (file_cache, 0, sizeof (file_cache));
+    errno = 0;
 }
 
 FILE *fopen (const char *path, const char *mode) {
-    const char *name = base_name (path);
+    const char *name = path;
     unsigned char *data = 0;
     long size = 0;
     FILE *f;
@@ -673,6 +711,9 @@ FILE *fopen (const char *path, const char *mode) {
         errno = EROFS;
         return 0;                       /* no writing: config / saves off */
     }
+    while (name[0] == '.' && name[1] == '/') {
+        name += 2;
+    }
     for (i = 0; i < MAX_CACHED; i++) {
         if (file_cache[i].data && !strcasecmp (file_cache[i].name, name)) {
             data = file_cache[i].data;
@@ -681,7 +722,7 @@ FILE *fopen (const char *path, const char *mode) {
         }
     }
     if (!data) {
-        if (dg_load_file (name, &data, &size) < 0) {
+        if (sdk_load_file (name, &data, &size) < 0) {
             errno = ENOENT;
             return 0;
         }

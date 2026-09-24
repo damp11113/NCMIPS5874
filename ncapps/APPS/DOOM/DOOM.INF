@@ -1,0 +1,6 @@
+# Launcher menu entry (see launcher/launcher.c for the keys)
+name=Doom
+version=1.9 (The Ultimate Doom)
+desc=The Ultimate Doom, doomgeneric port with sound effects and OPL2 music. Remote: arrows move, OK fire, RED use, GREEN/YELLOW strafe, BLUE run, 1-7 weapons, INFO map, EXIT menu, SETTINGS debug overlay, POWER quit.
+bin=APP.BIN
+args=-iwad doom.wad

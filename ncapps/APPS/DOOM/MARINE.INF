@@ -1,0 +1,4 @@
+name=Doom II: Marine mod
+desc=Doom II with MARINE1.WAD (new MAP01 and sprites, merged) and the SUPER2.DEH DeHackEd patch.
+bin=APP.BIN
+args=-iwad doom2.wad -merge marine1.wad -deh super2.deh

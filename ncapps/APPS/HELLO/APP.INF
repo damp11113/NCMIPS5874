@@ -1,0 +1,4 @@
+name=SDK hello
+desc=SDK example: lists its app folder and shows the button you press. EXIT quits. Crash tests for the crash screen: RED = NULL pointer write, YELLOW = unaligned read, BLUE = jump into data.
+bin=APP.BIN
+args=hello world

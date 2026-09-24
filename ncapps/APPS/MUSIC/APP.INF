@@ -1,0 +1,4 @@
+name=Music player
+desc=Plays MP3 and WAV files from the /MUSIC folder (or the stick root), with title / artist / album tags and the album cover (embedded picture or cover.jpg / folder.jpg). OK pause, UP/DOWN previous/next, LEFT/RIGHT volume, RED/GREEN seek, BACK list.
+bin=APP.BIN
+args=/MUSIC

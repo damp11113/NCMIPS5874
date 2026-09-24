@@ -1,0 +1,5 @@
+# Copy to ncapps/local.sh (not in git) and edit: your own media for the
+# stick. stage.sh runs it with put () and $DST / $NC set.
+# put "/d/soundfont/GeneralUser.sf2" "$NC/APPS/MIDI/GM.SF2"
+# for f in /c/Users/me/Music/*.mp3; do put "$f" "$DST/MUSIC/$(basename "$f")"; done
+# for f in /c/Users/me/midi/*.mid; do put "$f" "$DST/MIDI/$(basename "$f")"; done

@@ -1,0 +1,5 @@
+name=Doom II
+version=1.9
+desc=Doom II: Hell on Earth. Same controls as Doom.
+bin=APP.BIN
+args=-iwad doom2.wad

@@ -39,7 +39,7 @@
 extern u32 dg_sleep_ticks, dg_draw_ticks, dg_sound_ticks, dg_music_ticks, dg_frames;
 extern u32 dg_rows_drawn, dg_usb_bytes;
 extern size_t heap_in_use;
-extern long dg_wad_size;
+long dg_files_bytes (void);         /* dg_nc5874.c */
 int dg_sound_active (void);
 int dg_music_voices (void);
 int dg_music_playing (void);
@@ -172,7 +172,7 @@ static void draw_box (struct fb *fb, const struct snap *now) {
     s_kb (&s, "HEAP   ", heap_in_use);
     line (fb, LEFT_X, r++, s.buf, GREEN);
     s_reset (&s);
-    s_kb (&s, " WAD   ", dg_wad_size);
+    s_kb (&s, " FILES ", dg_files_bytes ());
     line (fb, LEFT_X, r++, s.buf, GREEN);
     s_reset (&s);
     s_kb (&s, "ZONE   ", zone - zfree);

@@ -12,6 +12,8 @@
  *             (percussive) keeps decaying at the release rate after the
  *             sustain level.
  * Total attenuation = envelope + TL * 4 (0.75 dB steps), gain table.
+ * Channels 9-17: a second register bank at 0x100-0x1ff (as the OPL3's
+ * second array), so MIDI can use 18 voices; the OPL2 itself has 9.
  */
 #include <string.h>
 #include <math.h>
@@ -37,7 +39,7 @@ struct chan {
     int fnum, block, key, fb, conn;
 };
 
-static struct chan ch[9];
+static struct chan ch[OPL_CHANNELS];
 static int wave_select;
 static int out_rate;
 
@@ -56,7 +58,7 @@ static const signed char slot_of_off[0x16] = {
     0, 1, 2, 3, 4, 5, -1, -1, 6, 7, 8, 9, 10, 11, -1, -1, 12, 13, 14, 15, 16, 17
 };
 
-static struct op *op_of_off (int off) {
+static struct op *op_of_off (int bank, int off) {
     int s, k;
 
     if (off < 0 || off >= 0x16 || slot_of_off[off] < 0) {
@@ -64,7 +66,7 @@ static struct op *op_of_off (int off) {
     }
     s = slot_of_off[off];
     k = s % 6;
-    return &ch[(s / 6) * 3 + k % 3].op[k / 3];
+    return &ch[bank * 9 + (s / 6) * 3 + k % 3].op[k / 3];
 }
 
 void opl_init (int rate) {
@@ -112,7 +114,7 @@ void opl_reset (void) {
     int c, o;
 
     memset (ch, 0, sizeof (ch));
-    for (c = 0; c < 9; c++) {
+    for (c = 0; c < OPL_CHANNELS; c++) {
         for (o = 0; o < 2; o++) {
             ch[c].op[o].env = ENV_MAX;
             ch[c].op[o].state = EG_OFF;
@@ -149,50 +151,50 @@ static void key_off (struct op *op) {
 void opl_write (int reg, int val) {
     struct op *op;
     struct chan *c;
-    int key;
+    int key, bank = (reg >> 8) & 1;
 
     reg &= 0xff;
     val &= 0xff;
-    if (reg == 0x01) {
+    if (reg == 0x01 && bank == 0) {
         wave_select = (val & 0x20) != 0;
         return;
     }
     switch (reg & 0xe0) {
     case 0x20:
-        if ((op = op_of_off (reg - 0x20))) {
+        if ((op = op_of_off (bank, reg - 0x20))) {
             op->egt = (val >> 5) & 1;
             op->mult = val & 15;
         }
         break;
     case 0x40:
-        if ((op = op_of_off (reg - 0x40))) {
+        if ((op = op_of_off (bank, reg - 0x40))) {
             op->tl = (val & 0x3f) * 4;
         }
         break;
     case 0x60:
-        if ((op = op_of_off (reg - 0x60))) {
+        if ((op = op_of_off (bank, reg - 0x60))) {
             op->ar = val >> 4;
             op->dr = val & 15;
         }
         break;
     case 0x80:
-        if ((op = op_of_off (reg - 0x80))) {
+        if ((op = op_of_off (bank, reg - 0x80))) {
             op->sl = ((val >> 4) == 15 ? 511 : (val >> 4) * 16) << 16;
             op->rr = val & 15;
         }
         break;
     case 0xe0:
-        if ((op = op_of_off (reg - 0xe0))) {
+        if ((op = op_of_off (bank, reg - 0xe0))) {
             op->wave = val & 3;
         }
         break;
     case 0xa0:
         if (reg >= 0xa0 && reg <= 0xa8) {
-            c = &ch[reg - 0xa0];
+            c = &ch[bank * 9 + reg - 0xa0];
             c->fnum = (c->fnum & 0x300) | val;
             set_step (c);
         } else if (reg >= 0xb0 && reg <= 0xb8) {
-            c = &ch[reg - 0xb0];
+            c = &ch[bank * 9 + reg - 0xb0];
             c->fnum = (c->fnum & 0xff) | ((val & 3) << 8);
             c->block = (val >> 2) & 7;
             set_step (c);
@@ -209,7 +211,7 @@ void opl_write (int reg, int val) {
         break;
     case 0xc0:
         if (reg >= 0xc0 && reg <= 0xc8) {
-            c = &ch[reg - 0xc0];
+            c = &ch[bank * 9 + reg - 0xc0];
             c->fb = (val >> 1) & 7;
             c->conn = val & 1;
         }
@@ -267,7 +269,7 @@ static inline int op_calc (struct op *op, int mod) {
 void opl_render (int *left, int *right, int n, const int *pan_l, const int *pan_r) {
     int c, i;
 
-    for (c = 0; c < 9; c++) {
+    for (c = 0; c < OPL_CHANNELS; c++) {
         struct chan *cc = &ch[c];
         struct op *m = &cc->op[0], *k = &cc->op[1];
         int gl = pan_l[c], gr = pan_r[c];

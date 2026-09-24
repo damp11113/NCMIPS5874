@@ -10,7 +10,7 @@
  *   opl_init (48000);
  *   opl_write (reg, val);                      as on the real chip
  *   opl_render (left, right, n, pan_l, pan_r); adds n samples to int
- *                                              buffers; pan_l/pan_r[9] are
+ *                                              buffers; pan_l/pan_r[18] are
  *                                              per-channel gains 0-256
  *                                              (a stereo extension: the
  *                                              OPL2 itself is mono)
@@ -18,6 +18,9 @@
  */
 #ifndef OPL_H
 #define OPL_H
+
+/* 9 OPL2 channels + 9 more in a second register bank (reg | 0x100) */
+#define OPL_CHANNELS 18
 
 void opl_init (int rate);
 void opl_reset (void);

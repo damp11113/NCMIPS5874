@@ -1,0 +1,4 @@
+name=TV demo
+desc=The first own TV app: text, gradients, bouncing box, blinking LED. STANDBY quits.
+abi=uboot
+bin=APP.BIN

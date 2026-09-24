@@ -9,9 +9,11 @@
  *   Input:  stock remote (ir.h) and the serial console. Keys are held
  *           while the remote repeats; released IR_RELEASE_MS after the
  *           last frame. Serial keys are pressed and released at once.
- *   Files:  fopen () loads whole files from the USB stick (usbfat.h)
- *           into RAM: DOOM.WAD (12.4 MB) takes ~15 s at U-Boot's USB
- *           speed. Saving is not supported.
+ *   Files:  SDK fopen () loads whole files from the USB stick into RAM
+ *           (DOOM.WAD, 12.4 MB, takes ~15 s at U-Boot's USB speed); from
+ *           the launcher, relative names are inside the app's folder.
+ *           Saving is not supported yet. A red bar shows big loads.
+ *   Build:  on the SDK (../sdk): runtime, C library, exit / atexit.
  *   Timer:  U-Boot get_timer (ms).
  *   Sound:  dg_sound.c (effects mixer -> audio.h), topped up from here.
  *
@@ -34,8 +36,7 @@
 #include "doomtype.h"
 #include "i_video.h"
 
-#define BOX_WANT_USB
-#include "box.h"
+#include "sdk.h"
 
 void dg_sound_pump (void);          /* dg_sound.c */
 void dg_sound_stop (void);
@@ -45,7 +46,7 @@ extern int dg_debug_on;
 
 /* Counters for the debug overlay (raw CP0 Count, wrap: deltas only) */
 u32 dg_sleep_ticks, dg_draw_ticks, dg_frames, dg_rows_drawn, dg_usb_bytes;
-long dg_wad_size;                   /* bytes of files loaded from USB */
+static long files_bytes;            /* bytes of big files loaded (overlay) */
 
 static inline u32 ticks (void) {
     u32 v;
@@ -65,67 +66,39 @@ static unsigned char prev_frame[SCREENWIDTH * SCREENHEIGHT];
 static int full_redraw = 1;
 static u32 line_buf[OUT_W / 2];
 
-static void *exit_buf[5];
-static int exit_code;
+/* ---- files: progress bar for big loads (sdk_load_progress) ---- */
 
-/* ---- files ---- */
+static void load_progress (u32 done, u32 total) {
+    static u32 last;
 
-int dg_load_file (const char *name, unsigned char **data, long *size) {
-    static int mounted;
-    static struct ufile f;
-    unsigned char *buf;
-    u32 done = 0, start, last = 0;
-
-    if (!mounted) {
-        if (ufs_mount () < 0) {
-            return -1;
-        }
-        mounted = 1;
+    if (done < last) {
+        last = 0;
     }
-    if (ufs_open (&f, name) < 0) {
-        return -1;
+    if (done - last < 1024 * 1024 && done != total) {
+        return;
     }
-    buf = malloc (f.size + 1);
-    if (!buf) {
-        printf ("dg: no memory for %s (%u bytes)\n", name, f.size);
-        return -1;
+    last = done;
+    printf ("\r  %u / %u KB ", done / 1024, total / 1024);
+    if (done == total) {
+        printf ("\n");
+        files_bytes += total;
     }
-    printf ("dg: loading %s (%u KB) from USB\n", name, f.size / 1024);
-    start = ub_get_timer (0);
-    while (done < f.size) {
-        u32 n = ufs_read (&f, buf + done, 256 * 1024);
-
-        if (n == 0) {
-            printf ("\ndg: read error at %u\n", done);
-            free (buf);
-            return -1;
-        }
-        done += n;
-        if (done - last >= 1024 * 1024 || done == f.size) {
-            u32 ms = ub_get_timer (start);
-
-            last = done;
-            printf ("\r  %u / %u KB  (%u KB/s) ", done / 1024, f.size / 1024,
-                    ms ? done / ms * 1000 / 1024 : 0);
-            if (fb.pix && f.size > 1024 * 1024) {       /* progress bar */
-                int w = (int) ((unsigned long long) OUT_W * done / f.size);
-
-                fb_rect (&fb, out_x, out_y + OUT_H / 2 - 8, w, 16, RGB (200, 40, 40));
-            }
-        }
+    if (fb.pix && total > 1024 * 1024) {
+        fb_rect (&fb, out_x, out_y + OUT_H / 2 - 8,
+                 (int) ((unsigned long long) OUT_W * done / total), 16, RGB (200, 40, 40));
     }
-    printf ("\n");
-    *data = buf;
-    *size = f.size;
-    dg_wad_size += f.size;
-    return 0;
 }
 
-/* ---- exit back to U-Boot ---- */
+long dg_files_bytes (void) {
+    return files_bytes;
+}
 
-void dg_exit (int code) {
-    exit_code = code;
-    __builtin_longjmp (exit_buf, 1);
+static void cleanup (void) {
+    dg_sound_stop ();
+    if (fb.pix) {
+        fb_clear (&fb, TRANSPARENT);
+    }
+    led_green (1);
 }
 
 /* ---- screen ---- */
@@ -146,7 +119,7 @@ static void build_lut (void) {
 void DG_Init (void) {
     if (osd_setup (&fb) < 0) {
         printf ("dg: display not running: source avstart.scr first\n");
-        dg_exit (1);
+        exit (1);
     }
     out_x = ((fb.w - OUT_W) / 2) & ~1;
     out_y = (fb.h - OUT_H) / 2;
@@ -204,9 +177,10 @@ void DG_DrawFrame (void) {
     full_redraw = 0;
     dg_draw_ticks += ticks () - t0;
     dg_frames++;
-    dg_usb_bytes = ufs_bytes;
+    dg_usb_bytes = sdk_usb_bytes ();
     dg_sound_pump ();               /* drawing is the slow part: top up audio */
     dg_debug_frame (&fb);
+    sdk_overlay_tick ();
 }
 
 /* ---- timer ---- */
@@ -214,7 +188,7 @@ void DG_DrawFrame (void) {
 void DG_SleepMs (uint32_t ms) {
     u32 t0 = ticks ();
 
-    ub_udelay (ms * 1000);
+    sdk_idle (ms * 1000);                   /* counted idle for the SDK overlay too */
     dg_sleep_ticks += ticks () - t0;
 }
 
@@ -292,7 +266,13 @@ static void poll_remote (void) {
             continue;
         }
         if (ev.key == IR_KEY_POWER) {
-            dg_exit (0);
+            exit (0);
+        }
+        if (ev.key == IR_KEY_MUTE) {
+            if (!ev.repeat) {
+                sdk_overlay_on = !sdk_overlay_on;   /* SDK performance bar */
+            }
+            continue;
         }
         if (ev.key == IR_KEY_SETTINGS) {
             if (!ev.repeat) {
@@ -363,7 +343,7 @@ static void poll_serial (void) {
         int c = ub_getc ();
 
         if (c == 'Q') {
-            dg_exit (0);
+            exit (0);
         }
         if (c == 'D') {
             toggle_debug ();
@@ -435,18 +415,10 @@ int main (int argc, char *argv[]) {
 
     printf ("Doom for the NC5874 box (doomgeneric). POWER on the remote or "
             "'Q' on serial quits.\n");
-    if (__builtin_setjmp (exit_buf) == 0) {
-        doomgeneric_Create (n, args);
-        for (;;) {
-            doomgeneric_Tick ();
-        }
+    sdk_load_progress = load_progress;
+    atexit (cleanup);               /* Doom leaves through exit () */
+    doomgeneric_Create (n, args);
+    for (;;) {
+        doomgeneric_Tick ();
     }
-
-    dg_sound_stop ();
-    if (fb.pix) {
-        fb_clear (&fb, TRANSPARENT);
-    }
-    led_green (1);
-    printf ("\ndoom: exit %d\n", exit_code);
-    return exit_code;
 }

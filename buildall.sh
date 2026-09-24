@@ -16,3 +16,10 @@ if [ -f helix/mp3/mp3dec.c ]; then
 else
     echo "SKIPPED mp3play, badapple (Helix sources missing, see buildmp3.sh)"
 fi
+# SDK apps and the NCAPPS launcher
+sh sdk/build.sh build_sdk/HELLO.BIN sdk/examples/hello.c || echo "FAILED hello"
+LOAD=0x80800000 MAX_END=0x80a00000 OBJ=build_launcher sh sdk/build.sh launcher/LAUNCHER.BIN launcher/launcher.c launcher/crash_entry.S || echo "FAILED launcher"
+[ -d doom/doomgeneric ] && [ -d doom/chocolate ] && { sh doom/build.sh || echo "FAILED doom"; }
+python3 mkscript.py ncboot.txt ncboot.scr || echo "FAILED ncboot.scr"
+for app in sysinfo music midi; do sh apps/$app/build.sh || echo "FAILED $app"; done
+python3 mkscript.py ncbig.txt ncbig.scr || echo "FAILED ncbig.scr"

@@ -1,0 +1,4 @@
+name=MIDI player
+desc=Plays .mid files from the /MIDI folder with two synths: OPL FM (Doom GENMIDI instruments) and SoundFont 2 (first .sf2 in this app folder). BLUE switches the engine while playing. OK pause, UP/DOWN previous/next, LEFT/RIGHT volume, BACK list.
+bin=APP.BIN
+args=/MIDI

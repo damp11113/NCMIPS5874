@@ -57,7 +57,7 @@ struct mchan {
 static const unsigned char *genmidi;    /* lump, NULL = no music */
 static struct voice voices[NUM_VOICES];
 static struct mchan chans[16];
-static int pan_l[NUM_VOICES], pan_r[NUM_VOICES];
+static int pan_l[OPL_CHANNELS], pan_r[OPL_CHANNELS];
 static unsigned age_counter;
 
 static const unsigned char *song, *score, *score_end, *mus_pos;
@@ -418,6 +418,16 @@ static void music_tick (void) {
 
 u32 dg_music_ticks;                 /* OPL + score time (CP0 Count), for dg_debug.c */
 
+/* CP0 Count (0 when built for the PC test) */
+static inline u32 count_now (void) {
+    u32 v = 0;
+
+#ifdef __mips__
+    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+#endif
+    return v;
+}
+
 int dg_music_voices (void) {
     int i, n = 0;
 
@@ -439,7 +449,7 @@ void dg_music_render (int *left, int *right, int n) {
     if (!genmidi) {
         return;
     }
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (t0));
+    t0 = count_now ();
     while (n > 0) {
         /* samples until the next 1/140 s tick */
         int seg = (RATE - tick_acc + TICK_HZ - 1) / TICK_HZ;
@@ -473,7 +483,7 @@ void dg_music_render (int *left, int *right, int n) {
             music_tick ();
         }
     }
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (t1));
+    t1 = count_now ();
     dg_music_ticks += t1 - t0;
 }
 

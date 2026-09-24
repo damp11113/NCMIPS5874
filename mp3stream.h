@@ -213,6 +213,20 @@ static int mp3s_open_stream (unsigned char *buf, int size, int (*refill) (unsign
     return mp3s_open (buf, mp3s_left);
 }
 
+/* Streaming: drop all buffered input and decoded samples, e.g. after the
+ * caller moved its file position (seek). The decoder resyncs on its own
+ * (the first frames may report a bit-reservoir underflow and are skipped). */
+__attribute__ ((unused))
+static void mp3s_restart (void) {
+    mp3s_ptr = mp3s_buf;
+    mp3s_left = 0;
+    mp3s_eof = 0;
+    mp3s_have = 0;
+    mp3s_pos = 0;
+    mp3s_frac = 0;
+    mp3s_fill ();
+}
+
 /* Feed the audio ring as far as it has room (max MP3S_CHUNK frames).
  * Returns 0 at end of data, else 1. */
 static int mp3s_pump (void) {
@@ -285,6 +299,7 @@ static int mp3s_pump (void) {
 }
 
 /* Let what is still in the audio ring play out (max ~0.5 s) */
+__attribute__ ((unused))
 static void mp3s_drain (void) {
     u32 start = get_timer (0);
 
@@ -294,6 +309,7 @@ static void mp3s_drain (void) {
 }
 
 /* One-line summary: frames, bad frames, decode time and CPU share */
+__attribute__ ((unused))
 static void mp3s_report (const char *who) {
     u32 audio_ms = mp3s_out_frames / (AUD_RATE / 1000);
 

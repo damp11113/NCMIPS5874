@@ -1,0 +1,3 @@
+name=System info
+desc=Hardware details (CPU, caches, clock measured against the 48 kHz audio clock, display, USB stick, memory map) and benchmarks: integer, multiply, memory, soft-float, OSD fill rate, USB read speed. LEFT/RIGHT pages, OK runs the benchmarks, EXIT quits.
+bin=APP.BIN

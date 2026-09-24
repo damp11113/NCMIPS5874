@@ -1,0 +1,5 @@
+name=Bad Apple!!
+desc=Bad Apple!! shadow-art video with sound, streamed from the stick. Serial d = debug overlay; EXIT or STANDBY stops.
+abi=uboot
+bin=APP.BIN
+args=NCAPPS/APPS/BADAPPLE/BADAPPLE.BAV

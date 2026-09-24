@@ -36,7 +36,7 @@
 #include "osdsetup.h"
 #include "mp3stream.h"
 #include "usbfat.h"
-#include "strbuf.h"
+#include "sdk/strbuf.h"
 
 #define BAV_MAX_END     0x83000000      /* OSD header + pixels start here */
 #define MAX_W           640
