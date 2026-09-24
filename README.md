@@ -1,7 +1,9 @@
 # Bare-metal apps on a Nationalchip 5874 set-top box
 
+<img width="4080" height="2296" alt="20260925_055207" src="https://github.com/user-attachments/assets/ade16948-5731-4803-a8c1-39fbd4badce7" />
+<img width="4080" height="2296" alt="20260925_055132" src="https://github.com/user-attachments/assets/fcc1f144-5607-45e4-ae96-faa9fe81e5af" />
+<img width="4080" height="2296" alt="20260925_055010" src="https://github.com/user-attachments/assets/1b6652eb-61f0-435a-8a57-7b39b3037c01" />
 <img width="4080" height="2296" alt="20260923_235438" src="https://github.com/user-attachments/assets/69d968d6-3ad3-44dc-a6e6-2b390f6ccd4e" />
-<img width="4080" height="2296" alt="20260924_032327" src="https://github.com/user-attachments/assets/be3a7055-40f6-4f4c-ba2c-7cee7e0bebac" />
 
 Running my own code on a cheap DVB-T2/IPTV set-top box (board
 `PCB-CS8051M`) — no Linux, no stock firmware, straight from U-Boot — with
