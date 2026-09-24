@@ -128,6 +128,7 @@ Write, compile, and execute custom bare-metal MIPS assembly code on a Nationalch
 - WiFi chip programs: fatload the program and `rtl8188fufw.bin` (fw last) while the stick is visible, then `usb port 1`, `usb reset`, `go ${a} 82000000 ${filesize}`.
 - `${filesize}` = size of the LAST fatload.
 - Before building audplay: `python mksine.py > sine256.h`.
+- `wsl sh ./buildall.sh` builds all current programs + hooks (13 outputs, verified after the restore: sizes identical to the originals except the simplified rtlhello).
 - **Commit work to git regularly** (license decision pending: repo LICENSE is GPL-3.0, but rtl8188* files are GPL-2.0-only derived from Linux -> switch repo to GPL-2.0-or-later, or keep rtl8188* out of the repo).
 
 **Possible next steps (user to pick):**
