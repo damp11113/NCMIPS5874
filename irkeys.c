@@ -17,10 +17,10 @@ int main () {
     while (!standby_pressed () && !tstc ()) {
         if (ir_poll (&ev)) {
             if (ev.repeat) {
-                printf ("  repeat key 0x%02x\n", ev.key);
+                printf ("  repeat key 0x%02x %s\n", ev.key, ir_key_name (ev.key));
                 repeats++;
             } else {
-                printf ("key 0x%02x  (user %04x%s)\n", ev.key, ev.user,
+                printf ("key 0x%02x %-8s (user %04x%s)\n", ev.key, ir_key_name (ev.key), ev.user,
                         ev.user == IR_USER_STOCK ? "" : ", not stock remote");
                 led_green (1);
                 udelay (30000);

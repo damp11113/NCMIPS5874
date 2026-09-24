@@ -12,6 +12,7 @@ done
 ./buildhook.sh hook_audsnap.c hook_audsnap hook_entry_irkey.S || echo "FAILED hook_audsnap"
 if [ -f helix/mp3/mp3dec.c ]; then
     ./buildmp3.sh mp3play.c mp3play || echo "FAILED mp3play"
+    ./buildmp3.sh badapple.c badapple || echo "FAILED badapple"
 else
-    echo "SKIPPED mp3play (Helix sources missing, see buildmp3.sh)"
+    echo "SKIPPED mp3play, badapple (Helix sources missing, see buildmp3.sh)"
 fi

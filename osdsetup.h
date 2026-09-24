@@ -17,8 +17,12 @@
 
 #include "osd.h"
 
+/* A program can #define OSD_HDR_PHYS before including this to move the
+ * plane (0x1c3000 bytes: header, pixels 0x1000 after it) */
+#ifndef OSD_HDR_PHYS
 #define OSD_HDR_PHYS    0x03000000u
-#define OSD_PIX_PHYS    0x03001000u
+#endif
+#define OSD_PIX_PHYS    (OSD_HDR_PHYS + 0x1000u)
 #define OSD_SRC_W       1280
 #define OSD_SRC_H       720
 

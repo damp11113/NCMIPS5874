@@ -1,0 +1,160 @@
+Patch File for DeHackEd v3.0
+
+# Note: Use the pound sign ('#') to start comment lines.
+
+Doom version = 19
+Patch format = 6
+
+
+Thing 1 (Player)
+Width = 524288
+Height = 2949120
+Mass = 50
+Bits = 167775238
+
+Thing 3 (Sargeant)
+Hit points = 40
+Pain chance = 100
+Speed = 20
+Mass = 20
+
+Thing 11 (Chaingun Sargeant)
+Hit points = 450
+Reaction time = 6
+Pain chance = 200
+Speed = 12
+Bits = 71303174
+
+Thing 24 (SS Nazi)
+Pain chance = 20
+Bits = 71303174
+
+Thing 31 (Barrel)
+Bits = 201326598
+
+Thing 34 (Rocket (in air))
+Initial frame = 816
+Speed = 2621440
+Width = 131072
+Height = 131072
+Bits = 66576
+
+Thing 35 (Plasma Bullet)
+Speed = 2621440
+Width = 65536
+
+Thing 62 (Lite Amp. Visor)
+ID # = 2001
+Initial frame = 884
+Bits = 1
+
+Thing 78 (Shotgun)
+ID # = 2007
+Initial frame = 870
+
+Thing 91 (Grey Tree)
+Mass = 9000
+Bits = 524294
+
+Thing 98 (Brown Stub)
+Mass = 9000
+Bits = 524294
+
+Thing 127 (Large Tree)
+Height = 2621440
+Mass = 9000
+Bits = 524294
+
+Frame 11
+Sprite subnumber = 32769
+
+Frame 12
+Sprite subnumber = 32770
+
+Frame 13
+Sprite subnumber = 32771
+Duration = 1
+
+Frame 14
+Sprite subnumber = 32772
+Duration = 1
+Next frame = 10
+
+Frame 15
+Duration = 1
+
+Frame 16
+Duration = 1
+
+Frame 17
+Duration = 1
+
+Frame 21
+Duration = 1
+
+Frame 22
+Duration = 1
+Next frame = 30
+
+Frame 30
+Duration = 2
+
+Frame 31
+Sprite subnumber = 1
+Duration = 2
+Next frame = 18
+
+Frame 57
+Sprite number = 2
+
+Frame 58
+Sprite number = 2
+
+Frame 59
+Sprite number = 2
+
+Frame 60
+Sprite number = 2
+Sprite subnumber = 0
+
+Frame 61
+Sprite number = 2
+
+Frame 62
+Sprite number = 2
+
+Frame 63
+Sprite number = 2
+Sprite subnumber = 2
+
+Frame 64
+Sprite number = 2
+Sprite subnumber = 3
+
+Frame 65
+Sprite number = 2
+Sprite subnumber = 2
+
+Frame 66
+Sprite number = 2
+Sprite subnumber = 3
+
+Ammo 0 (Bullets)
+Max ammo = 30
+Per ammo = 30
+
+Ammo 1 (Shells)
+Max ammo = 100
+Per ammo = 10
+
+Ammo 2 (Cells)
+Per ammo = 250
+
+Misc 0
+Initial Health = 20
+Initial Bullets = 30
+Max Health = 20
+Max Soulsphere = 20
+Soulsphere Health = 20
+Megasphere Health = 20
+God Mode Health = 20

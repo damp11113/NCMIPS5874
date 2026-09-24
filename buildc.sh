@@ -2,13 +2,16 @@
 # Build a C program for U-Boot 'go'.
 # Usage (in WSL): ./buildc.sh [main.c] [out-name] [load-addr]
 #   load-addr defaults to 0x80008000 (the usual 'go ${a}' address)
+#   EXTRA_CFLAGS (env) is added to the compiler flags, e.g.
+#   EXTRA_CFLAGS=-msoft-float for code using __builtin_setjmp: the
+#   hard-float default makes it save FPU registers, and this CPU has no FPU.
 set -e
 SRC=${1:-main.c}
 OUT=${2:-app}
 LOAD=${3:-0x80008000}
 CROSS=mipsel-linux-gnu-
 
-${CROSS}gcc -march=mips32r2 -EL -Os -ffreestanding -fno-builtin -nostdlib \
+${CROSS}gcc -march=mips32r2 -EL -Os -ffreestanding -fno-builtin -nostdlib $EXTRA_CFLAGS \
     -mno-abicalls -fno-pic -G 0 -Wall -ffunction-sections -fdata-sections -Wl,--gc-sections -static -no-pie \
     -Wl,--no-warn-rwx-segments -Wl,--build-id=none \
     -Wl,--require-defined=_start -Wl,--defsym=LOAD_ADDR=$LOAD \

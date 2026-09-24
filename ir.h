@@ -12,6 +12,8 @@
  * frame, one NEC repeat code, then full frames again (verified with
  * irkeys), so "held" is decided by timing: the same key again within
  * IR_HOLD_MS, or a repeat code, gives ev.repeat = 1.
+ *
+ * Key codes of the stock remote: IR_KEY_* below, names via ir_key_name ().
  */
 #ifndef IR_H
 #define IR_H
@@ -99,6 +101,70 @@ static inline int ir_poll (struct ir_event *ev) {
         return 1;
     }
     return 0;
+}
+
+/* Stock remote key codes (user code 0xfe01), mapped 2026-09-25 with irkeys.
+ * The arrow keys double as channel / volume keys. */
+#define IR_KEY_POWER    0x1c
+#define IR_KEY_MUTE     0x0b
+#define IR_KEY_INFO     0x14
+#define IR_KEY_ITV      0x5a
+#define IR_KEY_USB      0x5b
+#define IR_KEY_RADIO    0x4a
+#define IR_KEY_RED      0x4f
+#define IR_KEY_GREEN    0x4e            /* labelled GREEN (SW) */
+#define IR_KEY_YELLOW   0x4d
+#define IR_KEY_BLUE     0x4c
+#define IR_KEY_PLAY     0x53
+#define IR_KEY_PAUSE    0x52
+#define IR_KEY_STOP     0x51
+#define IR_KEY_NEXT     0x58
+#define IR_KEY_SETTINGS 0x18
+#define IR_KEY_EXIT     0x1a
+#define IR_KEY_VIDEO    0x43
+#define IR_KEY_HOME     0x41
+#define IR_KEY_UP       0x47            /* CH+ */
+#define IR_KEY_DOWN     0x4b            /* CH- */
+#define IR_KEY_LEFT     0x49            /* V- */
+#define IR_KEY_RIGHT    0x45            /* V+ */
+#define IR_KEY_OK       0x1e
+#define IR_KEY_1        0x08
+#define IR_KEY_2        0x09
+#define IR_KEY_3        0x0a
+#define IR_KEY_4        0x0c
+#define IR_KEY_5        0x0d
+#define IR_KEY_6        0x0e
+#define IR_KEY_7        0x10
+#define IR_KEY_8        0x11
+#define IR_KEY_9        0x12
+#define IR_KEY_0        0x15
+#define IR_KEY_WIFI     0x46
+#define IR_KEY_RECALL   0x16
+
+/* Button name for a key code of the stock remote, "?" if unknown */
+static inline const char *ir_key_name (u32 key) {
+    static const struct { unsigned char key; const char *name; } names[] = {
+        { IR_KEY_POWER, "POWER" }, { IR_KEY_MUTE, "MUTE" }, { IR_KEY_INFO, "INFO" },
+        { IR_KEY_ITV, "ITV" }, { IR_KEY_USB, "USB" }, { IR_KEY_RADIO, "RADIO" },
+        { IR_KEY_RED, "RED" }, { IR_KEY_GREEN, "GREEN" }, { IR_KEY_YELLOW, "YELLOW" },
+        { IR_KEY_BLUE, "BLUE" }, { IR_KEY_PLAY, "PLAY" }, { IR_KEY_PAUSE, "PAUSE" },
+        { IR_KEY_STOP, "STOP" }, { IR_KEY_NEXT, "NEXT" }, { IR_KEY_SETTINGS, "SETTINGS" },
+        { IR_KEY_EXIT, "EXIT" }, { IR_KEY_VIDEO, "VIDEO" }, { IR_KEY_HOME, "HOME" },
+        { IR_KEY_UP, "UP" }, { IR_KEY_DOWN, "DOWN" }, { IR_KEY_LEFT, "LEFT" },
+        { IR_KEY_RIGHT, "RIGHT" }, { IR_KEY_OK, "OK" },
+        { IR_KEY_1, "1" }, { IR_KEY_2, "2" }, { IR_KEY_3, "3" }, { IR_KEY_4, "4" },
+        { IR_KEY_5, "5" }, { IR_KEY_6, "6" }, { IR_KEY_7, "7" }, { IR_KEY_8, "8" },
+        { IR_KEY_9, "9" }, { IR_KEY_0, "0" },
+        { IR_KEY_WIFI, "WIFI" }, { IR_KEY_RECALL, "RECALL" },
+    };
+    u32 i;
+
+    for (i = 0; i < sizeof (names) / sizeof (names[0]); i++) {
+        if (names[i].key == key) {
+            return names[i].name;
+        }
+    }
+    return "?";
 }
 
 #endif

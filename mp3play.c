@@ -31,54 +31,15 @@
 #include "audio.h"
 #include "ir.h"
 #include "osdsetup.h"
-#include "mp3dec.h"
+#include "mp3stream.h"
+#include "strbuf.h"
 
-#define CHUNK           512
 #define MP3_MAX_END     0x83000000      /* OSD header + pixels start here */
-#define COUNT_PER_MS    324000          /* CP0 Count rate (cpuinfo) / 1000 */
 #define TAG_LEN         64
 
 int memcmp (const void *a, const void *b, unsigned int n);    /* libc.c */
 
-/* Helix allocates its state once (~30 KB): a bump allocator is enough */
-static unsigned char helix_pool[48 * 1024] __attribute__ ((aligned (8)));
-static u32 helix_used;
-
-void *helix_malloc (int size) {
-    void *p;
-
-    size = (size + 7) & ~7;
-    if (helix_used + size > sizeof (helix_pool)) {
-        printf ("mp3play: helix_malloc (%d) out of pool\n", size);
-        return 0;
-    }
-    p = helix_pool + helix_used;
-    helix_used += size;
-    return p;
-}
-
-void helix_free (void *ptr) {
-    (void) ptr;
-}
-
-static short dec_out[MAX_NCHAN * MAX_NGRAN * MAX_NSAMP];   /* one frame */
-static short pcm_in[2 * (MAX_NGRAN * MAX_NSAMP + 8)];      /* stereo, decoded */
-static short pcm[CHUNK * 2];                               /* stereo, 48 kHz */
-
-static HMP3Decoder mp3;
-static unsigned char *in_ptr;
-static int in_left;
-static MP3FrameInfo info;
-static u32 frames_ok, frame_errors, dec_ms, dec_acc;
-
 static char tag_title[TAG_LEN], tag_artist[TAG_LEN], tag_album[TAG_LEN], tag_year[8];
-
-static inline u32 count_now (void) {
-    u32 v;
-
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
-    return v;
-}
 
 static u32 parse_dec (const char *s) {
     u32 v = 0;
@@ -103,46 +64,6 @@ static int has_char (const char *s, char c) {
         }
     }
     return 0;
-}
-
-/* ---- small string building (no sprintf in U-Boot's exports) ---- */
-
-struct str {
-    char buf[96];
-    int n;
-};
-
-static void s_reset (struct str *s) {
-    s->n = 0;
-    s->buf[0] = 0;
-}
-
-static void s_add (struct str *s, const char *t) {
-    while (*t && s->n < (int) sizeof (s->buf) - 1) {
-        s->buf[s->n++] = *t++;
-    }
-    s->buf[s->n] = 0;
-}
-
-/* Unsigned decimal, at least 'digits' digits (zero padded) */
-static void s_num (struct str *s, u32 v, int digits) {
-    char tmp[12];
-    int i = 0;
-
-    do {
-        tmp[i++] = '0' + v % 10;
-        v /= 10;
-    } while (v || i < digits);
-    while (i > 0 && s->n < (int) sizeof (s->buf) - 1) {
-        s->buf[s->n++] = tmp[--i];
-    }
-    s->buf[s->n] = 0;
-}
-
-static void s_time (struct str *s, u32 secs) {
-    s_num (s, secs / 60, 1);
-    s_add (s, ":");
-    s_num (s, secs % 60, 2);
 }
 
 /* ---- ID3 tags ---- */
@@ -354,13 +275,13 @@ static void draw_static (const char *fallback_name) {
 
     s_reset (&s);
     s_add (&s, "Format : MPEG-");
-    s_add (&s, info.version == 0 ? "1" : info.version == 1 ? "2" : "2.5");
+    s_add (&s, mp3s_info.version == 0 ? "1" : mp3s_info.version == 1 ? "2" : "2.5");
     s_add (&s, " Layer ");
-    s_num (&s, info.layer, 1);
+    s_num (&s, mp3s_info.layer, 1);
     s_add (&s, ", ");
-    s_num (&s, info.samprate, 1);
+    s_num (&s, mp3s_info.samprate, 1);
     s_add (&s, " Hz, ");
-    s_add (&s, info.nChans == 2 ? "stereo" : "mono");
+    s_add (&s, mp3s_info.nChans == 2 ? "stereo" : "mono");
     s_add (&s, " -> 48000 Hz");
     draw_field (MARGIN, 390, s.buf, 2, WHITE, BG, 70);
 
@@ -417,7 +338,7 @@ static void draw_status (u32 elapsed_s, u32 total_s, u32 cpu10, u32 buf_pct) {
 
     s_reset (&s);
     s_add (&s, "Bitrate: ");
-    s_num (&s, info.bitrate / 1000, 1);
+    s_num (&s, mp3s_info.bitrate / 1000, 1);
     s_add (&s, " kbit/s");
     draw_field (MARGIN, 425, s.buf, 2, WHITE, BG, 40);
 
@@ -437,85 +358,22 @@ static void draw_status (u32 elapsed_s, u32 total_s, u32 cpu10, u32 buf_pct) {
 
     s_reset (&s);
     s_add (&s, "Frames : ");
-    s_num (&s, frames_ok, 1);
+    s_num (&s, mp3s_frames_ok, 1);
     s_add (&s, "   bad: ");
-    s_num (&s, frame_errors, 1);
+    s_num (&s, mp3s_errors, 1);
     draw_field (MARGIN, 530, s.buf, 2, WHITE, BG, 40);
 }
 
-/* ---- decoding ---- */
-
-/*
- * Decode the next good frame into dst as stereo pairs.
- * Returns the number of stereo frames, 0 at end of file.
- */
-static int decode_frame (short *dst) {
-    for (;;) {
-        int off, err, n, i;
-        u32 t0, d;
-
-        off = MP3FindSyncWord (in_ptr, in_left);
-        if (off < 0) {
-            return 0;
-        }
-        in_ptr += off;
-        in_left -= off;
-
-        t0 = count_now ();
-        err = MP3Decode (mp3, &in_ptr, &in_left, dec_out, 0);
-        d = count_now () - t0;
-        dec_acc += d;
-        while (dec_acc >= COUNT_PER_MS) {
-            dec_acc -= COUNT_PER_MS;
-            dec_ms++;
-        }
-
-        if (err == ERR_MP3_INDATA_UNDERFLOW) {
-            return 0;                   /* whole file is in RAM: end */
-        }
-        if (err == ERR_MP3_MAINDATA_UNDERFLOW) {
-            continue;                   /* bit reservoir filling up */
-        }
-        if (err != ERR_MP3_NONE) {
-            frame_errors++;
-            if (in_left > 0) {          /* step past the bad sync, resync */
-                in_ptr++;
-                in_left--;
-            }
-            continue;
-        }
-
-        MP3GetLastFrameInfo (mp3, &info);
-        frames_ok++;
-        if (info.nChans == 2) {
-            n = info.outputSamps / 2;
-            for (i = 0; i < 2 * n; i++) {
-                dst[i] = dec_out[i];
-            }
-        } else {
-            n = info.outputSamps;
-            for (i = 0; i < n; i++) {
-                dst[2 * i] = dec_out[i];
-                dst[2 * i + 1] = dec_out[i];
-            }
-        }
-        if (n > 0) {
-            return n;
-        }
-    }
-}
 
 int main (int argc, char *argv[]) {
     u32 load = (argc > 1) ? parse_hex (argv[1]) : 0x81600000;
-    u32 fsize = 0, vol = 100, volq, skip, data_len;
-    u32 have = 0, pos = 0, frac = 0, step = 0, rate = 0;
-    u32 out_frames = 0, last = 0, start, total_s = 0;
+    u32 fsize = 0, vol = 100, skip, data_len;
+    u32 last = 0, start, total_s = 0;
     u32 last_dec_ms = 0, last_out = 0, cpu10 = 0;
-    int peak_l = 0, peak_r = 0;
     unsigned char *file = (unsigned char *) load;
     const char *name = "Unknown title";
     struct ir_event ev;
-    int i, eof = 0;
+    int i, more = 1;
 
     for (i = 2; i < argc; i++) {
         if (argv[i][0] == 'v' && argv[i][1] == 'o' && argv[i][2] == 'l') {
@@ -538,7 +396,7 @@ int main (int argc, char *argv[]) {
     if (vol > 100) {
         vol = 100;
     }
-    volq = vol * 256 / 100;
+    mp3s_volq = vol * 256 / 100;
 
     skip = id3v2_size (file, fsize);
     if (skip >= fsize) {
@@ -555,28 +413,18 @@ int main (int argc, char *argv[]) {
     printf ("mp3play: title  \"%s\"\n", tag_title[0] ? tag_title : name);
     printf ("mp3play: artist \"%s\", album \"%s\", year \"%s\"\n",
             tag_artist, tag_album, tag_year);
-    in_ptr = file + skip;
-    in_left = data_len;
 
-    mp3 = MP3InitDecoder ();
-    if (!mp3) {
-        printf ("mp3play: MP3InitDecoder failed\n");
-        return 1;
-    }
-
-    have = decode_frame (pcm_in);
-    if (!have) {
+    if (mp3s_open (file + skip, data_len) < 0) {
         printf ("mp3play: no MPEG audio frame found at 0x%08x\n", load);
         return 1;
     }
-    rate = info.samprate;
-    step = (rate << 12) / 3000;         /* rate * 65536 / 48000, 16.16 */
-    if (info.bitrate > 0) {
-        total_s = data_len / (info.bitrate / 8);
+    if (mp3s_info.bitrate > 0) {
+        total_s = data_len / (mp3s_info.bitrate / 8);
     }
     printf ("mp3play: MPEG%s layer %d, %d ch, %d Hz, %d kbit/s, ~%d:%02d (CBR estimate)\n",
-            info.version == 0 ? "1" : info.version == 1 ? "2" : "2.5", info.layer,
-            info.nChans, rate, info.bitrate / 1000, total_s / 60, total_s % 60);
+            mp3s_info.version == 0 ? "1" : mp3s_info.version == 1 ? "2" : "2.5",
+            mp3s_info.layer, mp3s_info.nChans, mp3s_info.samprate,
+            mp3s_info.bitrate / 1000, total_s / 60, total_s % 60);
     printf ("mp3play: volume %d%%. Stop: STANDBY, serial key or remote key.\n", vol);
 
     have_screen = osd_setup (&fb) == 0;
@@ -594,111 +442,45 @@ int main (int argc, char *argv[]) {
     }
 
     start = get_timer (0);
-    while (!eof && !standby_pressed () && !tstc () && !ir_poll (&ev)) {
-        u32 n = audio_space ();
-        u32 k = 0, now;
+    while (more && !standby_pressed () && !tstc () && !ir_poll (&ev)) {
+        u32 now;
 
-        if (n > CHUNK) {
-            n = CHUNK;
-        }
-        while (k < n) {
-            const short *a, *b;
-            int l, r;
-
-            if (pos + 1 >= have) {
-                /* Keep the last decoded frame (interpolation needs it),
-                 * append the next decoded MP3 frame after it */
-                u32 keep = have - pos, got;
-
-                for (i = 0; i < (int) (2 * keep); i++) {
-                    pcm_in[i] = pcm_in[2 * pos + i];
-                }
-                have = keep;
-                pos = 0;
-                got = decode_frame (pcm_in + 2 * have);
-                if (!got) {
-                    eof = 1;
-                    break;
-                }
-                have += got;
-                if ((u32) info.samprate != rate) {
-                    rate = info.samprate;
-                    step = (rate << 12) / 3000;
-                }
-                continue;
-            }
-
-            a = pcm_in + 2 * pos;
-            b = a + 2;
-            l = a[0] + (((b[0] - a[0]) * (int) frac) >> 16);
-            r = a[1] + (((b[1] - a[1]) * (int) frac) >> 16);
-            l = (l * (int) volq) >> 8;
-            r = (r * (int) volq) >> 8;
-
-            /* Same order as wavplay: word = hi << 16 | lo, R = hi, L = lo */
-            pcm[2 * k] = r;
-            pcm[2 * k + 1] = l;
-            k++;
-
-            if (l < 0) {
-                l = -l;
-            }
-            if (r < 0) {
-                r = -r;
-            }
-            if (l > peak_l) {
-                peak_l = l;
-            }
-            if (r > peak_r) {
-                peak_r = r;
-            }
-
-            frac += step;
-            pos += frac >> 16;
-            frac &= 0xffff;
-        }
-        if (k) {
-            audio_write (pcm, k);
-            out_frames += k;
-        }
+        more = mp3s_pump ();
 
         /* Screen every 100 ms (meters), text + console every second.
          * The audio ring holds ~340 ms, so short drawing is safe. */
         now = get_timer (start);
         if (now - last >= 100) {
-            u32 t = out_frames / AUD_RATE;
+            u32 t = mp3s_out_frames / AUD_RATE;
             int full_update = now / 1000 != last / 1000;
 
             last = now;
             if (have_screen) {
-                draw_meter (580, peak_l);
-                draw_meter (615, peak_r);
+                draw_meter (580, mp3s_peak_l);
+                draw_meter (615, mp3s_peak_r);
             }
-            peak_l = peak_r = 0;
+            mp3s_peak_l = mp3s_peak_r = 0;
 
             if (full_update) {
-                u32 audio_ms = (out_frames - last_out) / (AUD_RATE / 1000);
+                u32 audio_ms = (mp3s_out_frames - last_out) / (AUD_RATE / 1000);
                 u32 buf_pct = ((AUD_REG (0x104) & AUD_MASK) << 3) * 100 / AUD_BUF_SIZE;
 
                 if (audio_ms) {
-                    cpu10 = (dec_ms - last_dec_ms) * 1000 / audio_ms;
+                    cpu10 = (mp3s_dec_ms - last_dec_ms) * 1000 / audio_ms;
                 }
-                last_dec_ms = dec_ms;
-                last_out = out_frames;
+                last_dec_ms = mp3s_dec_ms;
+                last_out = mp3s_out_frames;
                 if (have_screen) {
                     draw_status (t, total_s, cpu10, buf_pct);
                 }
                 printf ("\r  %d:%02d / ~%d:%02d  %3d kbit/s  CPU %d.%d %% ", t / 60, t % 60,
-                        total_s / 60, total_s % 60, info.bitrate / 1000, cpu10 / 10, cpu10 % 10);
+                        total_s / 60, total_s % 60, mp3s_info.bitrate / 1000,
+                        cpu10 / 10, cpu10 % 10);
             }
         }
     }
 
-    /* Let what is still in the buffer play out (max ~0.4 s) */
-    start = get_timer (0);
-    while ((AUD_REG (0x104) & AUD_MASK) > 0x40 && get_timer (start) < 500) {
-        udelay (1000);
-    }
+    mp3s_drain ();
     if (tstc ()) {
         getc ();
     }
@@ -710,17 +492,7 @@ int main (int argc, char *argv[]) {
     if (have_screen) {
         fb_clear (&fb, TRANSPARENT);
     }
-
-    {
-        u32 audio_ms = out_frames / (AUD_RATE / 1000);
-
-        printf ("\nmp3play done: %d frames, %d bad, decode %d ms for %d ms audio",
-                frames_ok, frame_errors, dec_ms, audio_ms);
-        if (audio_ms) {
-            printf (" (%d.%d %% CPU)", dec_ms * 100 / audio_ms,
-                    (dec_ms * 1000 / audio_ms) % 10);
-        }
-        printf ("\n");
-    }
+    printf ("\n");
+    mp3s_report ("mp3play done");
     return 0;
 }
