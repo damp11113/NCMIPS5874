@@ -3,7 +3,7 @@
 <img width="4080" height="2296" alt="20260923_235438" src="https://github.com/user-attachments/assets/69d968d6-3ad3-44dc-a6e6-2b390f6ccd4e" />
 <img width="4080" height="2296" alt="20260924_032327" src="https://github.com/user-attachments/assets/be3a7055-40f6-4f4c-ba2c-7cee7e0bebac" />
 
-Running my own code on a cheap DVB-T2/IPTV set-top box (<vendor>, board
+Running my own code on a cheap DVB-T2/IPTV set-top box (board
 `PCB-CS8051M`) — no Linux, no stock firmware, straight from U-Boot — with
 graphics on HDMI, the front-panel button and LED, and the `libgfx` graphics
 library ported to it.
