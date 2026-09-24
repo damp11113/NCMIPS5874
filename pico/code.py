@@ -32,10 +32,10 @@ import time
 import wifi
 import socketpool
 
-BAUD = 115200
+BAUD = 921600
 
 uart = busio.UART(board.GP0, board.GP1, baudrate=BAUD, timeout=0.01,
-                  receiver_buffer_size=1024)
+                  receiver_buffer_size=4096)
 led = digitalio.DigitalInOut(board.LED)
 led.direction = digitalio.Direction.OUTPUT
 pins = {}       # GP number -> DigitalInOut kept alive so outputs stay set

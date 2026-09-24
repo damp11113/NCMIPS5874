@@ -22,7 +22,7 @@
 #define CH340_EP_IN     0x82
 
 static void *ch340_dev;
-static unsigned char ch340_buf[64] __attribute__ ((aligned (32)));
+static unsigned char ch340_buf[512] __attribute__ ((aligned (32)));
 
 static inline int ch340_out (u32 req, u32 value, u32 index) {
     return ub_control (ch340_dev, req, 0x40, value, index, 0, 0, 1000);
@@ -82,13 +82,14 @@ static inline int ch340_write (const void *data, int n) {
     return done;
 }
 
-/* Receive up to max (<= 32) bytes. Blocks until data arrives or EHCI times
- * out (~5 s), so only call it when the other side is about to send. */
+/* Receive up to max (<= 512) bytes, ends early on a short packet. Blocks
+ * until data arrives or EHCI times out (~5 s), so only call it when the
+ * other side is about to send. */
 static inline int ch340_read (void *data, int max) {
     int actual = 0, i;
 
-    if (max > 32) {
-        max = 32;
+    if (max > (int) sizeof (ch340_buf)) {
+        max = sizeof (ch340_buf);
     }
     if (ub_bulk (ch340_dev, CH340_EP_IN, ch340_buf, max, &actual, 1000) < 0) {
         return -1;
