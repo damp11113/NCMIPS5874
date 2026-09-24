@@ -10,3 +10,8 @@ done
 ./buildc.sh hookpatch.c hookpatch 0x82000000 || echo "FAILED hookpatch"
 ./buildhook.sh hook_irsnap.c hook_irsnap || echo "FAILED hook_irsnap"
 ./buildhook.sh hook_audsnap.c hook_audsnap hook_entry_irkey.S || echo "FAILED hook_audsnap"
+if [ -f helix/mp3/mp3dec.c ]; then
+    ./buildmp3.sh mp3play.c mp3play || echo "FAILED mp3play"
+else
+    echo "SKIPPED mp3play (Helix sources missing, see buildmp3.sh)"
+fi

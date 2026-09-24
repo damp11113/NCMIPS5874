@@ -122,6 +122,8 @@ Write, compile, and execute custom bare-metal MIPS assembly code on a Nationalch
 - Pico 2 W coprocessor over CH340 (`pico/code.py`, `picoterm.c`): WiFi + plain HTTP.
 - Internal RTL8188FTV with own driver: firmware, init, scan (`rtlscan.c`), management-frame TX (`rtlprobe.c`).
 
+**MP3 (2026-09-25, VERIFIED HDMI + RCA):** `mp3play.c` = Helix fixed-point decoder (sources in `helix/mp3/`, not in git, see `buildmp3.sh`) + `audio.h`. Build `wsl sh ./buildmp3.sh mp3play.c mp3play` (47.6 KB, no FPU, no libgcc 64-bit divide). Run: `fatload usb 0 ${a} mp3play.bin; fatload usb 0 81600000 test.mp3; go ${a} 81600000 ${filesize} [vol=NN]`. Skips ID3v2, resyncs on bad frames, mono -> stereo, any rate resampled (linear) to 48 kHz, same R=hi/L=lo order as wavplay. Helix state from a 48 KB static bump pool. Prints decode CPU load at the end (CP0 Count, 324000/ms). **Measured: MPEG1 L3 320 kbit/s stereo 48 kHz = 4.7 % CPU** (2504 ms decode for 52.5 s audio, 0 bad frames) -> plenty of headroom for internet radio. HDMI audio needs `source avstart.scr` first (AV core); without it only RCA. L/R order still unchecked. **Now-playing screen VERIFIED 2026-09-25** (no clicks/stutter while drawing, buffer stays 99 %, UTF-16 ID3v2.3 tags shown right): OSD via osdsetup.h (title/artist/album/year from ID3v2.2-2.4 or ID3v1, ASCII only; progress bar; format; bitrate; per-second CPU load; buffer fill; frames; L/R level meters every 100 ms). Optional arg with a "." = file name shown when no title tag. File must now end below the OSD at phys 0x03000000 (~26 MB max). No display = console only.
+
 **Workflow reminders:**
 - `setenv a 0x80008000` after every box reset (not saved).
 - USB stick drive letter on the PC can change (G:, H:). "No medium found" = stick not in the PC.
@@ -132,7 +134,7 @@ Write, compile, and execute custom bare-metal MIPS assembly code on a Nationalch
 - **Commit work to git regularly** (license decision pending: repo LICENSE is GPL-3.0, but rtl8188* files are GPL-2.0-only derived from Linux -> switch repo to GPL-2.0-or-later, or keep rtl8188* out of the repo).
 
 **Possible next steps (user to pick):**
-1. MP3 decoder on the box (fixed-point, e.g. Helix) -> play .mp3 from USB with `audio.h`.
+1. MP3 decoder on the box: DONE (`mp3play.c`, see MP3 note above).
 2. Internet radio via the Pico: faster binary protocol + higher baud on the CH340 link, Pico buffers the stream, box decodes MP3 (needs 1).
 3. Non-blocking USB for our programs (own minimal EHCI driver or patch U-Boot's EHCI timeout).
 4. Apps: game (remote + libgfx + audio), music player UI, weather/clock screen via Pico HTTP.
