@@ -497,8 +497,17 @@ static void set_ebase (u32 base) {
     mtc0 (12, 0, st & ~ST_BEV);
 }
 
+/* True if page offset off is replaced by one of our stubs */
+static int in_stub (int off) {
+    int refill_len = crash_stub_refill_end - crash_stub_refill;
+    int general_len = crash_stub_general_end - crash_stub_general;
+
+    return off < refill_len || (off >= 0x180 && off < 0x180 + general_len);
+}
+
 /* A PC-relative branch in U-Boot's vector page that leaves the page would
- * go astray in a copy. Returns the offset of the first one, or -1. */
+ * go astray in a copy. Words our stubs replace do not count. Returns the
+ * offset of the first one, or -1. */
 static int page_branches_out (const u32 *page) {
     int i;
 
@@ -506,6 +515,9 @@ static int page_branches_out (const u32 *page) {
         u32 w = page[i], op = w >> 26;
         int target;
 
+        if (in_stub (i * 4)) {
+            continue;
+        }
         if (!(op == 1 || (op >= 4 && op <= 7) || (op >= 20 && op <= 23)) || w == 0xffffffffu) {
             continue;
         }
@@ -532,7 +544,8 @@ static void crash_install (void) {
             ub[0x62], ub[0x63], ub[0x80], ub[0x81], ub[0x82], ub[0x83]);
     bad = page_branches_out (ub);
     if (bad >= 0) {
-        printf ("launcher: crash handler OFF: U-Boot vector page branches out at +0x%03x\n", bad);
+        printf ("launcher: crash handler OFF: U-Boot vector page branches out at +0x%03x (%08x)\n",
+                bad, ub[bad / 4]);
         return;
     }
     memcpy (vec_page, (const void *) uboot_ebase, sizeof (vec_page));

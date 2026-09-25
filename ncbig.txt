@@ -1,7 +1,8 @@
-echo '### ncbig TEST: AV core with 4 MB video memory (nc_bigmem=1), then the NCAPPS launcher ###'
+if test -z "${ncvsz}"; then setenv ncvsz 0x800000; fi
+echo '### ncbig TEST: AV core video memory' ${ncvsz} '(nc_bigmem=1), then the NCAPPS launcher ###'
 setenv nc_bigmem 1
 setenv avenv_AVCPU_CONFIG 128M_AD_HEVC
-setenv avenv_VIDEO_FW_CFG_SIZE 0x400000
+setenv avenv_VIDEO_FW_CFG_SIZE ${ncvsz}
 setenv avenv_VIDEO_FW_CFG_ADDR 0xa4b58000
 setenv avenv_AUDIO_FW_CFG_SIZE 0x180000
 setenv avenv_AUDIO_FW_CFG_ADDR 0x849c8000

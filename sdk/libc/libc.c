@@ -70,6 +70,7 @@ void sdk_heap_region (size_t start, size_t end) {
         regions[nregions].start = start;
         regions[nregions].end = end;
         nregions++;
+        heap_total += end - start - sizeof (block_t);   /* known before the first malloc */
     }
 }
 
