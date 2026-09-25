@@ -81,6 +81,7 @@ int main (int argc, char *argv[]) {
     print_ip ("", ip);
     printf (" (%d ms)\n", (int) get_timer (t0));
 
+    net_debug = 1;                                  /* every TCP segment (debugging) */
     t0 = get_timer (0);
     if (tcp_connect (ip, 80, page_data) < 0) {
         printf ("TCP: no connection to port 80\n");
@@ -99,7 +100,9 @@ int main (int argc, char *argv[]) {
     }
     t0 = get_timer (0);
     if (tcp_write ((const unsigned char *) req, n) < 0) {
-        printf ("TCP: request not acknowledged\n");
+        printf ("TCP: request not acknowledged (%d bytes). WiFi: frames %d, data rx %d / tx %d, "
+                "not decrypted %d, biggest data frame %d, IP rx %d\n", n, wlan_rx_frames,
+                wlan_rx_data, wlan_tx_data, wlan_rx_undecrypted, wlan_rx_max, net_ip_rx);
         return 1;
     }
     printf ("----- response -----\n");

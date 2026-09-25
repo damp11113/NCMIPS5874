@@ -18,6 +18,7 @@
 
 static u32 net_ip, net_mask, net_gw, net_dns, net_dhcp_server, net_lease;
 static u32 net_pings, net_arp_replies, net_ip_rx;
+static int net_debug;                  /* print every TCP segment */
 
 /* ---- helpers ---- */
 
@@ -482,6 +483,9 @@ static void (*tcp_data_fn) (const unsigned char *d, u32 len);
 #define TF_ACK  0x10
 
 static int tcp_seg (u32 seq, u32 flags, const unsigned char *d, u32 len) {
+    if (net_debug) {
+        printf ("  tcp tx: flags %02x seq una+%d len %d\n", flags, seq - tcp_snd_una, len);
+    }
     static unsigned char s[1480];
     unsigned char ph[12];
     u32 hl = (flags & TF_SYN) ? 24 : 20, sum;
@@ -532,6 +536,11 @@ static void tcp_rx (u32 src, const unsigned char *p, u32 len) {
     ack = get_be32 (p + 8);
     flags = p[13];
     dlen = len - hl;
+    if (net_debug) {
+        printf ("  tcp rx: flags %02x seq rcv+%d ack una+%d len %d (our nxt una+%d)\n", flags,
+                (int) (seq - tcp_rcv_nxt), (int) (ack - tcp_snd_una), dlen,
+                (int) (tcp_snd_nxt - tcp_snd_una));
+    }
     if (flags & TF_RST) {
         printf ("TCP: connection reset by the server\n");
         tcp_state = TCP_DONE;

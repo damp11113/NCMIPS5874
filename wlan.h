@@ -52,7 +52,7 @@ static int ap_rsn_ok;
 static int wlan_keys_on;                /* keys in the CAM: data is encrypted */
 static int wlan_data_be;                /* 1: data on the BE queue / EP 0x03 */
 static u32 wlan_pn = 1;                 /* CCMP packet number (48 bits) */
-static u32 wlan_rx_frames, wlan_rx_data, wlan_rx_undecrypted, wlan_tx_data;
+static u32 wlan_rx_frames, wlan_rx_data, wlan_rx_undecrypted, wlan_tx_data, wlan_rx_max;
 
 /* Our RSN element: version 1, group CCMP, pairwise CCMP, AKM PSK, caps 0.
  * Sent in the association request and again in message 2 (must match). */
@@ -430,6 +430,9 @@ static void handle_frame (unsigned char *f, u32 len, int decrypted) {
         return;
     }
     wlan_rx_frames++;
+    if (len > wlan_rx_max && (f[0] & 0x0c) == 0x08) {
+        wlan_rx_max = len;                      /* biggest data frame seen */
+    }
     fc = f[0] | (f[1] << 8);
     type = (fc >> 2) & 3;
     sub = (fc >> 4) & 15;
