@@ -606,4 +606,70 @@ static int ufs_open (struct ufile *f, const char *path) {
     return 0;
 }
 
+/*
+ * The only write: replace the first sector of an existing file in place
+ * (settings files). The FAT, folders and file size are never touched, so
+ * the file system cannot be damaged, only this one sector. Safety checks:
+ * the file must be exactly one sector long, the sector on the stick must
+ * start with magic (so a wrong sector number is never written), and the
+ * sector is read back and compared after the write. Uses U-Boot's
+ * usb_stor_write (block_dev_desc_t +100). data = 512 bytes.
+ * Returns 0, or -1 (message printed).
+ */
+__attribute__ ((unused))
+static int ufs_overwrite (const char *path, const void *data, const char *magic) {
+    typedef u32 (*ub_blk_write_t) (int dev, u32 start, u32 blkcnt, const void *buffer);
+    struct udirent e;
+    u32 sec, write_fn, got;
+    int mlen = 0;
+
+    while (magic[mlen]) {
+        mlen++;
+    }
+    if (ufs_lookup (path, &e) < 0 || e.is_dir) {
+        printf ("usbfat: %s not found\n", path);
+        return -1;
+    }
+    if (e.size != UFS_SECTOR || ufs_eoc (e.first)) {
+        printf ("usbfat: %s must be %d bytes (is %d)\n", path, UFS_SECTOR, e.size);
+        return -1;
+    }
+    if (memcmp (data, magic, mlen)) {
+        printf ("usbfat: new data for %s does not start with the magic\n", path);
+        return -1;
+    }
+    write_fn = *(u32 *) ((char *) ufs_dev + 100);
+    if (write_fn < 0x80000000u || write_fn >= 0x82000000u) {
+        printf ("usbfat: U-Boot has no USB write (0x%08x)\n", write_fn);
+        return -1;
+    }
+    sec = ufs_clus_sector (e.first);
+    if (ufs_sectors (sec, 1, ufs_sec) < 0 || memcmp (ufs_sec, magic, mlen)) {
+        printf ("usbfat: sector %d of %s does not hold the expected data, not writing\n", sec,
+                path);
+        return -1;
+    }
+    memcpy (ufs_sec, data, UFS_SECTOR);
+#ifdef __mips__
+    {
+        u32 a;
+
+        /* DMA reads RAM: write the cached copy back first */
+        for (a = (u32) ufs_sec; a < (u32) ufs_sec + UFS_SECTOR; a += 32) {
+            __asm__ volatile ("cache 0x15, 0(%0)" : : "r" (a) : "memory");
+        }
+        __asm__ volatile ("sync" : : : "memory");
+    }
+#endif
+    ub_target = write_fn;
+    got = ((ub_blk_write_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), sec, 1,
+                                                ufs_sec);
+    memset (ufs_sec, 0, UFS_SECTOR);
+    if (got != 1 || ufs_sectors (sec, 1, ufs_sec) < 0 || memcmp (ufs_sec, data, UFS_SECTOR)) {
+        printf ("usbfat: writing %s (sector %d) failed\n", path, sec);
+        return -1;
+    }
+    return 0;
+}
+
 #endif

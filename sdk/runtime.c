@@ -301,6 +301,20 @@ u32 sdk_usb_bytes (void) {
     return ufs_bytes;
 }
 
+/* Replace a 512-byte settings file in place (see ufs_overwrite). 0 = ok. */
+int sdk_overwrite_sector_file (const char *path, const void *data, const char *magic) {
+    char full[SDK_PATH_MAX];
+    int rc;
+
+    if (mount () < 0) {
+        return -1;
+    }
+    sdk_resolve (path, full);
+    rc = ufs_overwrite (full, data, magic);
+    lost_check ();
+    return rc;
+}
+
 /* ---- streamed files (songs, big data: read in pieces, seek) ---- */
 
 #define MAX_STREAMS 3

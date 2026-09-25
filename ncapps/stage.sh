@@ -29,6 +29,12 @@ put () {                            # put <source> <destination>
 
 put "$ROOT/launcher/LAUNCHER.BIN" "$NC/LAUNCHER.BIN"
 [ -f "$NC/LAUNCHER.INI" ] || put "$ROOT/ncapps/LAUNCHER.INI" "$NC/LAUNCHER.INI"
+# Settings: written on the box (launcher overwrites the one sector in place,
+# must stay exactly 512 bytes), so only created when missing or broken
+if [ "$(wc -c < "$NC/SETTINGS.TXT" 2>/dev/null)" != 512 ]; then
+    rm -f "$NC/SETTINGS.TXT"
+    put "$ROOT/ncapps/SETTINGS.TXT" "$NC/SETTINGS.TXT"
+fi
 
 for inf in "$ROOT"/ncapps/APPS/*/*.INF; do
     app=$(basename "$(dirname "$inf")")

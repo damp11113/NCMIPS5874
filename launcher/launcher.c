@@ -22,7 +22,10 @@
  *
  * SETTINGS: about page (credits, project page) with the performance
  * overlay switch, which is passed to SDK apps ("@ovl=1"); MUTE toggles the
- * overlay in any SDK app.
+ * overlay in any SDK app. Second switch: big memory (AV core video memory
+ * 8 MB, the rest becomes heap), applied by the boot script on the next
+ * start. Both are saved in NCAPPS/SETTINGS.TXT (512 bytes, created by
+ * stage.sh, overwritten in place: the only write to the stick).
  *
  * Keys: UP / DOWN select, OK start, INFO details on serial, EXIT = leave
  * to the stock firmware, POWER = standby (screen off, red LED; POWER or
@@ -53,6 +56,8 @@
 #define APPS_DIR        "/NCAPPS/APPS"
 #define DATA_DIR        "/NCAPPS/APPSDATA"
 #define INI_PATH        "/NCAPPS/LAUNCHER.INI"
+#define SETTINGS_PATH   "/NCAPPS/SETTINGS.TXT"
+#define SETTINGS_MAGIC  "# NCAPPS settings"
 #define MAX_ENTRIES     64
 #define ICON_W          64
 #define ICON_BYTES      (ICON_W * ICON_W * 2)
@@ -161,6 +166,46 @@ static void ini_field (void *ctx, const char *k, const char *v) {
     } else if (!strcasecmp (k, "timeout")) {
         autostart_s = atoi (v);
     }
+}
+
+/* ---- SETTINGS.TXT (see settings_save) ---- */
+
+static int set_bigmem;              /* saved setting; the running state is sdk_bigmem_bytes */
+
+static void settings_field (void *ctx, const char *k, const char *v) {
+    (void) ctx;
+    if (!strcasecmp (k, "bigmem")) {
+        set_bigmem = atoi (v) != 0;
+    } else if (!strcasecmp (k, "overlay")) {
+        sdk_overlay_on = atoi (v) != 0;
+    }
+}
+
+/*
+ * One 512-byte sector, overwritten in place (sdk_overwrite_sector_file):
+ * stage.sh creates the file, the launcher never changes its size. The boot
+ * script reads it with 'env import -t' before it starts the AV core, so
+ * only name=value lines and '#' comments, and no '=' in comments.
+ */
+static int settings_save (void) {
+    static char buf[512];
+    int n;
+
+    n = snprintf (buf, sizeof (buf),
+                  SETTINGS_MAGIC "\n"
+                  "# Read by the boot script, written by the launcher (SETTINGS page).\n"
+                  "# bigmem 1: AV core video memory cut to 8 MB, about 60 MB more heap\n"
+                  "bigmem=%d\n"
+                  "overlay=%d\n",
+                  set_bigmem, sdk_overlay_on ? 1 : 0);
+    memset (buf + n, '#', sizeof (buf) - 1 - n);
+    buf[sizeof (buf) - 1] = '\n';
+    if (sdk_overwrite_sector_file (SETTINGS_PATH, buf, SETTINGS_MAGIC) < 0) {
+        printf ("launcher: settings NOT saved\n");
+        return -1;
+    }
+    printf ("launcher: settings saved (bigmem=%d overlay=%d)\n", set_bigmem, sdk_overlay_on);
+    return 0;
 }
 
 static int ends_with_inf (const char *n) {
@@ -745,13 +790,24 @@ static int launch (const struct entry *e) {
 
 /* ---- about / settings ---- */
 
+extern size_t heap_total;
+
 static void about (void) {
+    static const char *help[2][2] = {
+        { "CPU / memory / USB / audio bar at the top of the screen.",
+          "MUTE on the remote switches it in any app." },
+        { "Gives the AV core 8 MB video memory instead of 50: much more",
+          "heap for apps. Hardware video decoding may not work with it." },
+    };
     struct sdk_key k;
-    int redraw = 1;
+    int redraw = 1, item = 0, i;
+    const char *status = "";
+    u16 status_col = GREY;
 
     for (;;) {
         if (redraw) {
             char line[96];
+            int big_now = sdk_bigmem_bytes != 0;
 
             fb_clear (&fb, BG);
             fb_rect (&fb, 0, 0, fb.w, 100, PANEL);
@@ -766,17 +822,31 @@ static void about (void) {
             snprintf (line, sizeof (line), "%d app entries    built %s", count, __DATE__);
             fb_text (&fb, LIST_X, 450, line, 2, GREY, TRANSPARENT);
 
-            fb_rect (&fb, LIST_X - 10, 510, 900, 50, HILITE);
-            snprintf (line, sizeof (line), "Performance overlay:  %s",
-                      sdk_overlay_on ? "ON " : "OFF");
-            fb_text (&fb, LIST_X, 520, line, 2, WHITE, TRANSPARENT);
-            fb_text (&fb, LIST_X, 580, "CPU / memory / USB / audio bar at the top of the screen.",
-                     2, GREY, TRANSPARENT);
-            fb_text (&fb, LIST_X, 612, "MUTE on the remote switches it in any app.", 2, GREY,
-                     TRANSPARENT);
+            for (i = 0; i < 2; i++) {
+                int y = 486 + i * 44;
+
+                if (i == item) {
+                    fb_rect (&fb, LIST_X - 10, y - 8, 1000, 40, HILITE);
+                }
+                if (i == 0) {
+                    snprintf (line, sizeof (line), "Performance overlay:  %s",
+                              sdk_overlay_on ? "ON " : "OFF");
+                } else if (set_bigmem == big_now) {
+                    snprintf (line, sizeof (line), "Big memory:           %s  (heap %d MB)",
+                              set_bigmem ? "ON " : "OFF", (int) (heap_total >> 20));
+                } else {
+                    snprintf (line, sizeof (line), "Big memory:           %s  (after restart)",
+                              set_bigmem ? "ON " : "OFF");
+                }
+                fb_text (&fb, LIST_X, y, line, 2, WHITE, TRANSPARENT);
+            }
+            fb_text (&fb, LIST_X, 580, help[item][0], 2, GREY, TRANSPARENT);
+            fb_text (&fb, LIST_X, 606, help[item][1], 2, GREY, TRANSPARENT);
+            fb_text (&fb, LIST_X, 634, status, 2, status_col, TRANSPARENT);
             fb_rect (&fb, 0, 660, fb.w, 60, PANEL);
-            fb_text (&fb, LIST_X, 680, "OK toggle overlay   BACK / SETTINGS close", 2, GREY,
-                     TRANSPARENT);
+            fb_text (&fb, LIST_X, 680, set_bigmem != big_now ?
+                     "UP/DOWN select  OK change  RED restart now  BACK close" :
+                     "UP/DOWN select  OK change  BACK / SETTINGS close", 2, GREY, TRANSPARENT);
             redraw = 0;
         }
         if (!sdk_key_poll (&k)) {
@@ -786,9 +856,26 @@ static void about (void) {
         if (k.repeat) {
             continue;
         }
-        if (k.btn == BTN_OK) {
-            sdk_overlay_on = !sdk_overlay_on;
+        if (k.btn == BTN_UP || k.btn == BTN_DOWN) {
+            item = !item;
             redraw = 1;
+        } else if (k.btn == BTN_OK) {
+            if (item == 0) {
+                sdk_overlay_on = !sdk_overlay_on;
+            } else {
+                set_bigmem = !set_bigmem;
+            }
+            if (settings_save () == 0) {
+                status = "Saved to the USB stick.";
+                status_col = GREEN;
+            } else {
+                status = "NOT saved: /NCAPPS/SETTINGS.TXT missing or wrong (see serial).";
+                status_col = RED;
+            }
+            redraw = 1;
+        } else if (k.btn == BTN_RED && set_bigmem != (sdk_bigmem_bytes != 0)) {
+            message ("Restarting...", WHITE);
+            sdk_reboot ();
         } else if (k.btn == BTN_BACK || k.btn == BTN_MENU || k.btn == BTN_HOME) {
             return;
         }
@@ -885,6 +972,8 @@ int main (int argc, char *argv[]) {
     splash_status ("Reading settings...");
 
     read_kv (INI_PATH, ini_field, 0);
+    set_bigmem = sdk_bigmem_bytes != 0;
+    read_kv (SETTINGS_PATH, settings_field, 0);
     scan ();
     splash_on = 0;
     draw_all ();

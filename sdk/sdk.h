@@ -72,6 +72,11 @@ void sdk_dir_close (int h);
 extern void (*sdk_load_progress) (u32 done, u32 total); /* optional, big reads */
 u32 sdk_usb_bytes (void);                               /* read from USB so far */
 
+/* The only write to the stick: replace an existing file of exactly 512
+ * bytes in place (FAT and folders untouched). The old and new contents
+ * must both start with magic; read back after writing. 0 = ok. */
+int sdk_overwrite_sector_file (const char *path, const void *data, const char *magic);
+
 /* Streamed files: up to 3 open, read in pieces (32 KB USB reads) */
 int sdk_open (const char *path);                        /* handle, -1 = error */
 long sdk_read (int h, void *dst, long len);             /* bytes, 0 = end */
