@@ -2,7 +2,8 @@
  * rtlnet: the box on the home network over the internal WiFi. Joins the
  * network in WIFI.TXT (wlan.h), puts the keys into the chip, gets an
  * address by DHCP as "ncwifi" (netstack.h), then answers ARP and ping.
- * Prints counters every 10 s; any serial key stops.
+ * Prints counters every 10 s; 'q' on the serial console stops (other
+ * characters are ignored: stray bytes from the terminal ended runs early).
  *
  *   fatload usb 0 ${a} rtlnet.bin
  *   mw.b 83d00000 0 400; fatload usb 0 83d00000 WIFI.TXT
@@ -41,15 +42,14 @@ int main (int argc, char *argv[]) {
     }
     arp_send (1, 0, net_gw);                    /* learn the router's MAC */
     print_ip ("\nREADY: ping ", net_ip);
-    printf (" from your PC (host name %s). Any serial key stops.\n\n", NET_HOSTNAME);
+    printf (" from your PC (host name %s). 'q' stops.\n\n", NET_HOSTNAME);
 
     for (t = 0; state == S_DONE; t += 10) {
         wlan_poll (10000, net_rx);
         printf ("[%4d s] pings answered %d, ARP replies %d, IP rx %d, data rx %d / tx %d, "
                 "not decrypted %d\n", t + 10, net_pings, net_arp_replies, net_ip_rx,
                 wlan_rx_data, wlan_tx_data, wlan_rx_undecrypted);
-        if (tstc ()) {
-            getc ();
+        if (tstc () && getc () == 'q') {
             break;
         }
     }
