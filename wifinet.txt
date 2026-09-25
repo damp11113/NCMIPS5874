@@ -6,5 +6,4 @@ mw.b 83d00000 0 400
 fatload usb 0 83d00000 WIFI.TXT
 fatload usb 0 82000000 rtl8188fufw.bin
 usb port 1
-usb reset
 go ${a} 82000000 ${filesize} 83d00000 ${netargs}
