@@ -28,7 +28,8 @@
  * stage.sh, overwritten in place: the only write to the stick).
  *
  * Keys: UP / DOWN select, OK start, INFO details on serial, EXIT = leave
- * to the stock firmware, POWER = standby (screen off, red LED; POWER or
+ * to the stock firmware (with big memory on: restart with a one-shot RAM
+ * marker so the boot script gives the AV core its normal memory), POWER = standby (screen off, red LED; POWER or
  * the STANDBY button again restarts the box). STANDBY held at start-up =
  * leave to the stock firmware at once.
  * Serial: arrows / w s, Enter, Esc.
@@ -58,6 +59,8 @@
 #define INI_PATH        "/NCAPPS/LAUNCHER.INI"
 #define SETTINGS_PATH   "/NCAPPS/SETTINGS.TXT"
 #define SETTINGS_MAGIC  "# NCAPPS settings"
+#define STOCK_MARKER_ADDR 0xa3ff0000u   /* uncached; ncboot.txt checks it with itest */
+#define STOCK_MARKER    0x4e435354u     /* "NCST" */
 #define MAX_ENTRIES     64
 #define ICON_W          64
 #define ICON_BYTES      (ICON_W * ICON_W * 2)
@@ -1038,6 +1041,15 @@ int main (int argc, char *argv[]) {
             redraw = 1;
         } else if (k.btn == BTN_POWER && !k.repeat) {
             standby ();
+        } else if (k.btn == BTN_BACK && !k.repeat && sdk_bigmem_bytes) {
+            /* The AV core only has 8 MB video memory now: the stock firmware
+             * needs all of it. Restart; the boot script sees the marker
+             * (RAM survives the watchdog reset), clears it, starts the AV
+             * core normally and boots the stock firmware directly. */
+            message ("Restarting into the stock firmware (normal memory)...", WHITE);
+            printf ("launcher: big memory on -> restart with stock marker\n");
+            REG32 (STOCK_MARKER_ADDR) = STOCK_MARKER;
+            sdk_reboot ();
         } else if (k.btn == BTN_BACK && !k.repeat) {
             message ("Booting the stock firmware...", WHITE);
             fb_clear (&fb, TRANSPARENT);
