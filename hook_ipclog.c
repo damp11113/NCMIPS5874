@@ -72,6 +72,22 @@ void hook_main (u32 id, const u32 *msg, u32 ack) {
         }
         pf ("=== IPC HISTORY END ===\n");
     }
+    /* ES block registers just before each video command: what the stock
+     * player programs between commands (globals 0xbf260000.., video channel
+     * 0xbf260100..0xbf26015c) */
+    if (id == 0x10000413) {
+        pf ("R #%d g %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x\n", seq,
+            REG32 (0xbf260000), REG32 (0xbf260004), REG32 (0xbf26000c), REG32 (0xbf260014),
+            REG32 (0xbf260018), REG32 (0xbf26001c), REG32 (0xbf260020), REG32 (0xbf260024),
+            REG32 (0xbf260028), REG32 (0xbf26002c));
+        for (i = 0; i < 0x60; i += 0x20) {
+            u32 a = 0xbf260100 + i;
+
+            pf ("R #%d v+%02x %08x %08x %08x %08x %08x %08x %08x %08x\n", seq, i, REG32 (a),
+                REG32 (a + 4), REG32 (a + 8), REG32 (a + 12), REG32 (a + 16), REG32 (a + 20),
+                REG32 (a + 24), REG32 (a + 28));
+        }
+    }
     pf ("IPC #%d id %08x cmd %08x p %08x %08x %08x t %d ack %d\n", seq, id, msg[0], msg[1],
         msg[2], msg[3], msg[4], ack & 0xff);
     for (i = 1; i <= 3; i++) {
