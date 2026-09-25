@@ -201,3 +201,20 @@ addresses) in `continue.md`.
 - IR remote (receiver not on the GPIO banks; decoder probably unclocked
   until the stock firmware sets it up).
 - Full 1920x1080 OSD on the 1080i output.
+
+## License
+
+This project is **GPL-2.0-or-later** (full text in `LICENSE`): you may use it
+under version 2 of the GNU GPL or, at your option, any later version.
+
+Parts under other licenses:
+
+- `rtl8188.h`, `rtl8188_tables.h`, `wlan.h`: **GPL-2.0-only**, derived from
+  the Linux `rtl8xxxu` driver (Jes Sorensen, Bitterblue Smith, Realtek).
+  Programs built with them (the WiFi programs) are therefore GPL-2.0-only.
+- `softfp/`: LLVM compiler-rt builtins, Apache-2.0 WITH LLVM-exception
+  (`softfp/LICENSE.TXT`; the exception allows combining with GPL-2.0).
+- Not in this repository, fetched or supplied separately: Helix MP3 decoder
+  (`helix/`, RPSL/RCSL), doomgeneric and Chocolate Doom (GPL-2.0-or-later),
+  RTL8188F firmware (`rtl8188fufw.bin`, linux-firmware), game data (WADs),
+  and anything taken from the stock firmware or flash of the box.
