@@ -323,6 +323,19 @@ int main (int argc, char *argv[]) {
             src[0], src[1], src[2], src[3], src[4]);
     show ("before");
 
+    /* Video block config as the stock firmware leaves it (avdump.log).
+     * +0x00 bits 12-14 = 7 switches the decoder to frame descriptors ('es
+     * desc 1', AV core init_vdec_param 0x87e418f0); without them it misreads
+     * slices (invalid PPS). The rest looks like demux setup (0xe0 = MPEG
+     * video stream id), copied as is. */
+    ES_REG (0x00) = 0x5fa072d1;
+    ES_REG (0x04) = 0x00000007;
+    ES_REG (0x08) = 0x05010101;
+    ES_REG (0x0c) = 0xe0e00000;
+    ES_REG (0x10) = 0x00008080;
+    ES_REG (0x14) = 0xffff7f7f;
+    printf ("video block +0: %08x (es desc bits %d)\n", ES_REG (0x00), (ES_REG (0x00) >> 12) & 7);
+
     /* ES / PTS rings (the stock firmware's layout, flags 7 as seen) */
     ES_REG (ES_START) = ES_PHYS | 7;
     ES_REG (ES_END) = ES_PHYS + ES_SIZE - 1;
