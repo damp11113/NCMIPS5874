@@ -19,9 +19,9 @@ typedef int (*printf_t) (const char *fmt, ...);
 
 static u32 seq = 1;                 /* in .data: hook .bss is never cleared */
 
-/* Every message is also kept here, and the whole history is printed once
- * at message HIST_AT: the boot-time messages come before serial logging
- * is usually running. */
+/* Every message is also kept here, and the whole history is printed at the
+ * first video start command (0x10413, only sent when playback starts): the
+ * boot-time messages come before serial logging is usually running. */
 #define HIST_MAX    64
 static u32 hist[HIST_MAX][6] = { { 1 } };       /* initialised: stays in .data */
 static u32 hist_done = 0x55;                    /* 0x55 = not printed yet */
