@@ -19,12 +19,11 @@ typedef int (*printf_t) (const char *fmt, ...);
 
 static u32 seq = 1;                 /* in .data: hook .bss is never cleared */
 
-/* Every message is also kept here, and the whole history is printed at the
- * first video start command (0x10413, only sent when playback starts): the
- * boot-time messages come before serial logging is usually running. */
+/* Every message is also kept here, and the whole history is printed at
+ * every video start command (0x10413): the boot-time messages come before
+ * serial logging is usually running (and boot sends a start command too). */
 #define HIST_MAX    64
 static u32 hist[HIST_MAX][6] = { { 1 } };       /* initialised: stays in .data */
-static u32 hist_done = 0x55;                    /* 0x55 = not printed yet */
 
 static u32 ram_ptr (u32 v) {
     if ((v & 3) || v < 0x80000000u || v >= 0xc0000000u || (v & 0x1fffffffu) >= 0x08000000u) {
@@ -51,8 +50,7 @@ void hook_main (u32 id, const u32 *msg, u32 ack) {
     }
     FW_PRINT_EN = 1;
     FW_UART_MUTE = 0;
-    if ((msg[0] & 0x7fffffffu) == 0x10413 && hist_done == 0x55) {
-        hist_done = 1;
+    if ((msg[0] & 0x7fffffffu) == 0x10413) {
         pf ("=== IPC HISTORY #1..#%d ===\n", seq - 1);
         for (i = 0; i < seq - 1 && i < HIST_MAX; i++) {
             pf ("H #%d id %08x cmd %08x p %08x %08x %08x ack %d\n", i + 1, hist[i][0], hist[i][1],
