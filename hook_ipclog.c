@@ -56,6 +56,20 @@ void hook_main (u32 id, const u32 *msg, u32 ack) {
             pf ("H #%d id %08x cmd %08x p %08x %08x %08x ack %d\n", i + 1, hist[i][0], hist[i][1],
                 hist[i][2], hist[i][3], hist[i][4], hist[i][5]);
         }
+        /* What the boot-time pointer parameters point to now */
+        for (i = 0; i < seq - 1 && i < 13; i++) {
+            u32 k;
+
+            for (k = 2; k <= 4; k++) {
+                u32 p = ram_ptr (hist[i][k]);
+
+                for (j = 0; p && j < 64; j += 4) {
+                    pf ("HP #%d p%d %08x: %08x %08x %08x %08x\n", i + 1, k - 1, p + j * 4,
+                        REG32 (p + j * 4), REG32 (p + j * 4 + 4), REG32 (p + j * 4 + 8),
+                        REG32 (p + j * 4 + 12));
+                }
+            }
+        }
         pf ("=== IPC HISTORY END ===\n");
     }
     pf ("IPC #%d id %08x cmd %08x p %08x %08x %08x t %d ack %d\n", seq, id, msg[0], msg[1],
