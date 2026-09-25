@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Key table / security setup, TX descriptor security and RX decryption
+ * handling follow Linux drivers/net/wireless/realtek/rtl8xxxu (core.c):
+ * Copyright (c) 2014 - 2017 Jes Sorensen, portions (c) Realtek. */
 /*
  * wlan.h: WPA2-PSK station on the internal RTL8188FTV (rtl8188.h driver).
  *
