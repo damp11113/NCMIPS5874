@@ -218,6 +218,7 @@ static void boot_setup (u32 tbl) {
  */
 static u32 au_count;
 static u32 desc_slice;              /* desc=1: w5/w6 at the first slice (run 6) */
+static u32 hw_desc;                 /* hw=1: no descriptors, see feed_au */
 static unsigned char au_buf[1024 * 1024];      /* one access unit, 4-byte start codes */
 
 static u32 es_used (void) {
@@ -299,6 +300,14 @@ static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
     memcpy (ring + wr, au_buf, first);
     memcpy (ring, au_buf + first, n - first);
 
+    if (hw_desc) {
+        /* hw=1: data + ES wr only; does a hardware parser write the
+         * descriptors (+0x30) and move +0x2c / +0x40..+0x5c itself? */
+        au_count++;
+        __asm__ volatile ("sync" : : : "memory");
+        ES_REG (ES_WR) = (wr + n) % ES_SIZE;
+        return end;
+    }
     pw = ES_REG (ES_PTS_WR) % PTS_SIZE;
     d = (volatile u32 *) (0xa0000000u | (PTS_PHYS + pw));
     d[0] = 1;
@@ -368,6 +377,8 @@ int main (int argc, char *argv[]) {
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'h' && argv[i][2] == '=') {    /* hw=1: no descriptors */
+            hw_desc = parse_hex (argv[i] + 3);
         } else if (argv[i][0] == 'p' && argv[i][3] == '=') {    /* pre=1: prefill */
             prefill = parse_hex (argv[i] + 4);
         } else if (argv[i][0] == 'g' && argv[i][1] == '=') {    /* g=<hex>: 0xbf260000 */
