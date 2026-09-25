@@ -505,13 +505,14 @@ static const struct { unsigned char ir; short btn; } ir_btn[] = {
  * and is not passed to the app.
  */
 u32 sdk_saver_min = 5;
+int sdk_screen_off;
 static u32 saver_last_ms, saver_layer;
 static int saver_on, saver_eat_repeat;
 
 static void saver_wake (void) {
     REG32 (0xbf44006c) = saver_layer;
     REG32 (0xbf440060) = 0x00000001;
-    saver_on = 0;
+    saver_on = sdk_screen_off = 0;
     printf ("sdk: screen saver off\n");
 }
 
@@ -543,7 +544,7 @@ static void saver_check (void) {
     saver_layer = REG32 (0xbf44006c);
     REG32 (0xbf44006c) = 0x00000010;                /* layers as U-Boot left them: no OSD */
     REG32 (0xbf440060) = 0x00000001;
-    saver_on = 1;
+    saver_on = sdk_screen_off = 1;
     printf ("sdk: screen saver on after %d min (any key wakes)\n", sdk_saver_min);
 }
 
@@ -606,7 +607,7 @@ void sdk_overlay_tick (void) {
     char line[64];
 
     saver_check ();
-    if (!sdk_overlay_on && !was_on) {
+    if ((!sdk_overlay_on && !was_on) || sdk_screen_off) {
         return;
     }
     wall = now - last;

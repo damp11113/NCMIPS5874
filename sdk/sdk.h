@@ -138,6 +138,11 @@ void sdk_overlay_tick (void);
  * read the remote with ir_poll themselves, or while a video plays). */
 extern u32 sdk_saver_min;
 void sdk_saver_kick (void);
+
+/* 1 while the screen saver has the screen off: apps can skip periodic
+ * redraws (status lines, meters); the frame buffer is shown again as it is
+ * when a key wakes the screen, so keep drawing real content changes. */
+extern int sdk_screen_off;
 void sdk_reboot (void) __attribute__ ((noreturn));     /* watchdog reset, boots from flash */
 void sdk_cache_sync (u32 start, u32 len);
 void sdk_libc_reset (void);

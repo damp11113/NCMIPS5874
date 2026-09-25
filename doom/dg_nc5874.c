@@ -152,6 +152,10 @@ void DG_DrawFrame (void) {
         build_lut ();
         full_redraw = 1;
     }
+    if (sdk_screen_off) {                   /* screen saver: skip the copy, all of it on wake */
+        full_redraw = 1;
+        return;
+    }
     for (y = 0; y < SCREENHEIGHT; y++) {
         const unsigned char *src = frame + y * SCREENWIDTH;
         int oy, oy_end;

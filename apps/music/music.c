@@ -938,7 +938,7 @@ static void play_from (int idx) {
             seek_to (sk.target_ms / 1000);
         }
         now = ub_get_timer (t0);
-        if (now - last >= 100) {
+        if (now - last >= 100 && !sdk_screen_off) { /* screen saver: nothing to see */
             last = now;
             draw_status ();
         }

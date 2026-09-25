@@ -556,7 +556,7 @@ static void play_from (int idx) {
             smf_seek (sk.target_ms);
         }
         now = ub_get_timer (t0);
-        if (now - last >= 50) {
+        if (now - last >= 50 && !sdk_screen_off) {  /* screen saver: nothing to see */
             last = now;
             draw_status ();
         }
