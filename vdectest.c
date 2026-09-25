@@ -205,6 +205,92 @@ static void boot_setup (u32 tbl) {
     ipc_send (0x020413, 1, 2, 0, 1);
 }
 
+/*
+ * Feeding. The stock player writes whole frames (access units) into the ES
+ * ring and one 32-byte descriptor per frame into the PTS ring (avdump9.log):
+ *   w0 1, w1 ES phys address of the frame (its 4-byte start code), w2 0,
+ *   w3 PTS | 0x80000000 (90 kHz) or 0, w4 0, w5 ES phys address of the
+ *   frame's first slice (its 3-byte start code), w6 slice NAL header << 8 |
+ *   1 (0x6501 IDR, 0x4101 P, 0x0101 B), w7 frame counter
+ * then advances the ES wr offset (+0x34) and the PTS wr offset (+0x30).
+ * PTS left 0 for now.
+ */
+static u32 au_count;
+
+static u32 es_used (void) {
+    return (ES_REG (ES_WR) + ES_SIZE - ES_REG (ES_RD) % ES_SIZE) % ES_SIZE;
+}
+
+static u32 pts_used (void) {
+    return (ES_REG (ES_PTS_WR) + PTS_SIZE - ES_REG (ES_PTS_RD) % PTS_SIZE) % PTS_SIZE;
+}
+
+/* Next start code at or after p: returns its position (4-byte codes
+ * include their leading 0), *sc = its length; len if none */
+static u32 next_sc (const unsigned char *s, u32 len, u32 p, u32 *sc) {
+    for (; p + 3 <= len; p++) {
+        if (s[p] == 0 && s[p + 1] == 0 && s[p + 2] == 1) {
+            if (p > 0 && s[p - 1] == 0) {
+                *sc = 4;
+                return p - 1;
+            }
+            *sc = 3;
+            return p;
+        }
+    }
+    *sc = 0;
+    return len;
+}
+
+/* One access unit from pos (at a start code): a new one begins at an
+ * AUD/SEI/SPS/PPS or at a slice with first_mb_in_slice 0, once the current
+ * one has a slice. Copies it into the ring, writes its descriptor.
+ * Returns the position after it. */
+static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
+    volatile u32 *d;
+    unsigned char *ring = (unsigned char *) (0xa0000000u | ES_PHYS);
+    u32 q = pos, sc, end = len, slice = pos, hdr = 0, seen_vcl = 0;
+    u32 wr = ES_REG (ES_WR) % ES_SIZE, n, first, pw;
+
+    q = next_sc (s, len, q, &sc);
+    while (q < len) {
+        u32 h = s[q + sc], type = h & 0x1f, nq, nsc;
+
+        if (seen_vcl && ((type >= 6 && type <= 9) ||
+                         (type >= 1 && type <= 5 && q + sc + 1 < len && (s[q + sc + 1] & 0x80)))) {
+            end = q;
+            break;
+        }
+        if (type >= 1 && type <= 5 && !seen_vcl) {
+            seen_vcl = 1;
+            slice = q + sc - 3;
+            hdr = h;
+        }
+        nq = next_sc (s, len, q + sc + 1, &nsc);
+        q = nq;
+        sc = nsc;
+    }
+    n = end - pos;
+    first = ES_SIZE - wr < n ? ES_SIZE - wr : n;
+    memcpy (ring + wr, s + pos, first);
+    memcpy (ring, s + pos + first, n - first);
+
+    pw = ES_REG (ES_PTS_WR) % PTS_SIZE;
+    d = (volatile u32 *) (0xa0000000u | (PTS_PHYS + pw));
+    d[0] = 1;
+    d[1] = ES_PHYS + wr;
+    d[2] = 0;
+    d[3] = 0;
+    d[4] = 0;
+    d[5] = ES_PHYS + (wr + (slice - pos)) % ES_SIZE;
+    d[6] = (hdr << 8) | 1;
+    d[7] = au_count++;
+    __asm__ volatile ("sync" : : : "memory");
+    ES_REG (ES_WR) = (wr + n) % ES_SIZE;
+    ES_REG (ES_PTS_WR) = (pw + 32) % PTS_SIZE;
+    return end;
+}
+
 static void show (const char *tag) {
     printf ("%s: ES rd %06x wr %06x st %08x  PTS rd %04x wr %04x  mb 0c %08x 10 %08x 188 %08x "
             "c0 %08x cc %08x 184 %08x\n", tag, ES_REG (ES_RD), ES_REG (ES_WR), ES_REG (ES_STATUS),
@@ -219,7 +305,6 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
     u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, i, t_show, status;
-    unsigned char *ring = (unsigned char *) (0xa0000000u | ES_PHYS);
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
@@ -261,14 +346,12 @@ int main (int argc, char *argv[]) {
     /* Data in the ring before the start: the AV core's start path only sets
      * up the ES ring / decoder (ves_addr, video_dec_init) when its input
      * status says data is there (0x40000000); an empty ring defers the start
-     * (vdectest runs 1-3: 'error init' fallback, garbage decode). */
-    {
-        u32 n = len < ES_SIZE / 2 ? len : ES_SIZE / 2;
-
-        memcpy (ring, src, n);
-        pos = n;
-        ES_REG (ES_WR) = n;
+     * (vdectest runs 1-3: 'error init' fallback, garbage decode). Whole
+     * frames, each with its descriptor (see feed_au). */
+    while (pos < len && es_used () < ES_SIZE / 2) {
+        pos = feed_au (src, len, pos);
     }
+    printf ("prefilled %d frames, %d KB\n", au_count, es_used () / 1024);
     ipc_send (0x010413, 1, 2, 0, 1);            /* start: format 1 = H.264 */
     ipc_send (0x310413, 0, 2, 0, 1);
     ipc_send (0x030413, 0, 2, 0, 1);            /* pause */
@@ -280,27 +363,15 @@ int main (int argc, char *argv[]) {
     ipc_send (0x040413, 0, ES_SIZE, 0, 1);      /* resume */
     show ("started");
 
-    /* Feed: keep the ring topped up; wr is an offset into the ring */
+    /* Feed whole frames while there is room in both rings */
     t_show = ms_now ();
     for (;;) {
-        u32 rd = ES_REG (ES_RD) % ES_SIZE, wr = ES_REG (ES_WR) % ES_SIZE;
-        u32 used = (wr + ES_SIZE - rd) % ES_SIZE, space = ES_SIZE - used - 4096;
-
-        if (pos < len && space >= 65536) {
-            u32 n = 65536, first;
-
-            if (n > len - pos) {
-                n = len - pos;
-            }
-            first = ES_SIZE - wr < n ? ES_SIZE - wr : n;
-            memcpy (ring + wr, src + pos, first);
-            memcpy (ring, src + pos + first, n - first);
-            pos += n;
-            ES_REG (ES_WR) = (wr + n) % ES_SIZE;
+        if (pos < len && es_used () < ES_SIZE - 512 * 1024 && pts_used () < PTS_SIZE - 64 * 32) {
+            pos = feed_au (src, len, pos);
         }
         if ((ms_now () - t_show) >= 1000) {
             t_show = ms_now ();
-            printf ("fed %d / %d KB  ", pos / 1024, len / 1024);
+            printf ("fed %d frames, %d / %d KB  ", au_count, pos / 1024, len / 1024);
             show ("run");
         }
         ipc_poll (0);
