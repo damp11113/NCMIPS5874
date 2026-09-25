@@ -209,13 +209,15 @@ static void boot_setup (u32 tbl) {
  * Feeding. The stock player writes whole frames (access units) into the ES
  * ring and one 32-byte descriptor per frame into the PTS ring (avdump9.log):
  *   w0 1, w1 ES phys address of the frame (its 4-byte start code), w2 0,
- *   w3 PTS | 0x80000000 (90 kHz) or 0, w4 0, w5 ES phys address of the
- *   frame's first slice (its 3-byte start code), w6 slice NAL header << 8 |
- *   1 (0x6501 IDR, 0x4101 P, 0x0101 B), w7 frame counter
+ *   w3 PTS | 0x80000000 (90 kHz) or 0, w4 0, w5 ES phys address + 1 (the
+ *   3-byte start code; first stock frames: + 0x1e), w6 slice NAL header <<
+ *   8 | 1 (0x6501 IDR, 0x4101 P, 0x0101 B; 1 for the first frames), w7
+ *   frame counter
  * then advances the ES wr offset (+0x34) and the PTS wr offset (+0x30).
  * PTS left 0 for now.
  */
 static u32 au_count;
+static u32 desc_slice;              /* desc=1: w5/w6 at the first slice (run 6) */
 
 static u32 es_used (void) {
     return (ES_REG (ES_WR) + ES_SIZE - ES_REG (ES_RD) % ES_SIZE) % ES_SIZE;
@@ -282,8 +284,18 @@ static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
     d[2] = 0;
     d[3] = 0;
     d[4] = 0;
-    d[5] = ES_PHYS + (wr + (slice - pos)) % ES_SIZE;
-    d[6] = (hdr << 8) | 1;
+    if (desc_slice) {
+        /* run 6: w5 at the first slice -> SPS/PPS before it never parsed? */
+        d[5] = ES_PHYS + (wr + (slice - pos)) % ES_SIZE;
+        d[6] = (hdr << 8) | 1;
+    } else {
+        /* w5 = the frame's own 3-byte start code (stock: w1 + 1 for almost
+         * every frame), w6 = its first NAL's header if that is a slice */
+        u32 first_sc = s[pos + 2] == 1 ? 0 : 1, h0 = s[pos + first_sc + 3];
+
+        d[5] = ES_PHYS + (wr + first_sc) % ES_SIZE;
+        d[6] = ((h0 & 0x1f) >= 1 && (h0 & 0x1f) <= 5) ? (h0 << 8) | 1 : 1;
+    }
     d[7] = au_count++;
     __asm__ volatile ("sync" : : : "memory");
     ES_REG (ES_WR) = (wr + n) % ES_SIZE;
@@ -309,6 +321,8 @@ int main (int argc, char *argv[]) {
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'd' && argv[i][4] == '=') {    /* desc=1: old w5/w6 */
+            desc_slice = parse_hex (argv[i] + 5);
         } else if (argv[i][0] == 't' && argv[i][3] == '=') {    /* tbl=<addr>: boot setup */
             tbl = parse_hex (argv[i] + 4);
         }
