@@ -310,9 +310,14 @@ static void show (const char *tag) {
             REG32 (MB_BUSY), REG32 (0xbf1280c0), REG32 (0xbf1280cc), REG32 (0xbf128184));
 }
 
-/* The whole video block (+0x00..+0x5c) and its mirror at +0x80 */
+/* The whole video block (+0x00..+0x5c) and its mirror at +0x80, plus the
+ * block's global registers 0xbf260000.. (stock: 0xbf260000 = 3) */
 static void show_block (const char *tag) {
     u32 o;
+
+    printf ("%s global: %08x %08x %08x %08x %08x %08x  +80: %08x\n", tag, REG32 (0xbf260000),
+            REG32 (0xbf260004), REG32 (0xbf26000c), REG32 (0xbf260014), REG32 (0xbf260018),
+            REG32 (0xbf26001c), REG32 (0xbf260080));
 
     for (o = 0; o < 0x60; o += 16) {
         printf ("%s +%02x: %08x %08x %08x %08x   +%02x: %08x %08x %08x %08x\n", tag, o,
@@ -327,11 +332,13 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, i, t_show, status;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, g0 = 3, i, t_show, status;
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'g' && argv[i][1] == '=') {    /* g=<hex>: 0xbf260000 */
+            g0 = parse_hex (argv[i] + 2);
         } else if (argv[i][0] == 'r' && argv[i][3] == '=') {    /* r38=<hex>: +0x38 control */
             r38 = parse_hex (argv[i] + 4);
             have_r38 = 1;
@@ -363,6 +370,12 @@ int main (int argc, char *argv[]) {
     ES_REG (0x10) = 0x00008080;
     ES_REG (0x14) = 0xffff7f7f;
     printf ("video block +0: %08x (es desc bits %d)\n", ES_REG (0x00), (ES_REG (0x00) >> 12) & 7);
+    /* Global register of the ES block: stock 3 while playing (bit 0 video
+     * channel +0x100, bit 1 audio +0x200?); 0 in our runs 1-7, where the
+     * hardware reader (+0x40..+0x5c) never ran and ES rd stayed 0 */
+    show_block ("reset");
+    REG32 (0xbf260000) = g0;
+    printf ("0xbf260000 <- %08x, reads %08x\n", g0, REG32 (0xbf260000));
     if (have_r38) {
         /* +0x38: stock 0x3x00200c while playing, ours 0x8000000c */
         ES_REG (ES_STATUS) = r38;
