@@ -422,11 +422,68 @@ static inline void rtl_antenna_selection (void) {
 /* Steps as in rtl8xxxu_init_device + rtl8188fu_fops; the TX-only parts
  * (EDCA, retry, CAM, TX report) and IQ calibration are left out.
  * Returns 0 or a negative step number. */
+/*
+ * Power off as Linux rtl8188fu_power_off (active_to_lps, active_to_emu,
+ * emu_to_disabled). The WiFi module keeps its power across a box reset, so
+ * after an earlier run the chip is still on with its firmware running, and
+ * power-on failed ("power ready" / MAC enable never settle).
+ */
+static inline void rtl_power_off (void) {
+    int n;
+
+    wr16 (0x0040, rd16 (0x0040) & ~(1u << 12));     /* GPIO_MUXCFG */
+    wr32 (0x00b4, 0xffffffffu);                     /* HISR0 */
+    wr32 (0x00bc, 0xffffffffu);                     /* HISR1 */
+    wr8 (0x04ec, rd8 (0x04ec) & ~(1u << 1));        /* TX report timer off */
+    wr8 (0x001f, 0);                                /* RF_CTRL: RF off */
+    if (rd8 (REG_MCU_FW_DL) & MCU_FW_RAM_SEL) {     /* firmware self reset */
+        wr8 (REG_HMTFR + 3, 0x20);
+        for (n = 100; n && (rd16 (REG_SYS_FUNC) & SYS_FUNC_CPU_ENABLE); n--) {
+            udelay (50);
+        }
+        if (!n) {
+            wr16 (REG_SYS_FUNC, rd16 (REG_SYS_FUNC) & ~SYS_FUNC_CPU_ENABLE);
+        }
+    }
+    /* active_to_lps */
+    wr8 (0x0138 + 1, rd8 (0x0138 + 1) | 1);         /* FTIMR: CPWM */
+    wr8 (0x0522, 0xff);                             /* TXPAUSE */
+    for (n = 100; n && rd32 (0x05f8); n--) {        /* SCH_TX_CMD: TX idle */
+    }
+    wr8 (REG_SYS_FUNC, rd8 (REG_SYS_FUNC) & ~1u);   /* BBRSTB */
+    udelay (2);
+    wr8 (REG_SYS_FUNC, rd8 (REG_SYS_FUNC) & ~2u);   /* BB_GLB_RSTN */
+    wr16 (REG_CR, (rd16 (REG_CR) | 0x3f) & ~((1u << 6) | (1u << 7) | (1u << 9)));
+    wr8 (0x0553, rd8 (0x0553) | (1u << 5));         /* DUAL_TSF_RST: TX OK */
+    /* reset MCU, MCU ready status */
+    wr16 (REG_SYS_FUNC, rd16 (REG_SYS_FUNC) & ~SYS_FUNC_CPU_ENABLE);
+    wr8 (REG_MCU_FW_DL, 0);
+    /* active_to_emu */
+    wr8 (0x001f, 0);
+    wr8 (0x4e, rd8 (0x4e) & ~0x80u);
+    wr8 (0x27, 0x34);
+    wr8 (REG_APS_FSMCO + 1, rd8 (REG_APS_FSMCO + 1) | ((1u << 9) >> 8));   /* MAC off */
+    for (n = RTL_MAX_REG_POLL; n && (rd32 (REG_APS_FSMCO) & (1u << 9)); n--) {
+        udelay (10);
+    }
+    /* emu_to_disabled */
+    wr8 (REG_APS_FSMCO + 1, (rd8 (REG_APS_FSMCO + 1) &
+                             ~((APS_FSMCO_PCIE | APS_FSMCO_HW_SUSPEND) >> 8)) |
+                            (APS_FSMCO_HW_SUSPEND >> 8));
+    wr8 (0xc4, rd8 (0xc4) | 0x10);
+}
+
 static inline int rtl_init_device (const unsigned char *fw, u32 fw_size) {
     u32 v, pubq;
     int n;
 
-    if (rtl_power_on () < 0) {
+    if (rd8 (REG_MCU_FW_DL) & MCU_FW_RAM_SEL) {
+        printf ("rtl: chip still running from an earlier start, powering it off first\n");
+        rtl_power_off ();
+    }
+    n = rtl_power_on ();
+    if (n < 0) {
+        printf ("rtl: power on failed (%s)\n", n == -1 ? "power ready" : "MAC enable");
         return -1;
     }
 
