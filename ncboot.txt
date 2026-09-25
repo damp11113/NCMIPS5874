@@ -3,6 +3,7 @@ setenv bigmem 0
 setenv ncvsz 0x800000
 usb start
 if fatload usb 0 0x82400000 /NCAPPS/SETTINGS.TXT; then env import -t 0x82400000 ${filesize}; fi
+usb stop
 setenv avenv_AVCPU_CONFIG 128M_AD_HEVC
 if test "${bigmem}" = 1; then echo '### big memory: AV video memory' ${ncvsz} '###'; setenv nc_bigmem 1; setenv avenv_VIDEO_FW_CFG_SIZE ${ncvsz}; else setenv nc_bigmem; setenv avenv_VIDEO_FW_CFG_SIZE 0x31ac000; fi
 setenv avenv_VIDEO_FW_CFG_ADDR 0xa4b58000
@@ -16,6 +17,7 @@ loadimg 1 lzma 0xb0000 0x81500000 0x87e10000
 av_launch 0x87e10000
 cpu 1 release 0x87e10000
 setenv a 0x80008000
+usb start
 if fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '### starting NCAPPS launcher ###'; go 0x80800000; fi
 echo '### no NCAPPS (or launcher exited): booting stock firmware ###'
 loadimg 1 lzma 0x300000 0x81500000 0x80008000
