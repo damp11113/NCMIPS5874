@@ -428,7 +428,7 @@ static inline void rtl_antenna_selection (void) {
  * after an earlier run the chip is still on with its firmware running, and
  * power-on failed ("power ready" / MAC enable never settle).
  */
-static inline void rtl_power_off (void) {
+static inline void rtl_power_off_to (int disable) {
     int n;
 
     wr16 (0x0040, rd16 (0x0040) & ~(1u << 12));     /* GPIO_MUXCFG */
@@ -466,11 +466,20 @@ static inline void rtl_power_off (void) {
     for (n = RTL_MAX_REG_POLL; n && (rd32 (REG_APS_FSMCO) & (1u << 9)); n--) {
         udelay (10);
     }
-    /* emu_to_disabled */
+    if (!disable) {
+        return;                                     /* keep USB alive (retry) */
+    }
+    /* emu_to_disabled: WL suspend, USB APHY LDO off - the chip leaves USB */
     wr8 (REG_APS_FSMCO + 1, (rd8 (REG_APS_FSMCO + 1) &
                              ~((APS_FSMCO_PCIE | APS_FSMCO_HW_SUSPEND) >> 8)) |
                             (APS_FSMCO_HW_SUSPEND >> 8));
     wr8 (0xc4, rd8 (0xc4) | 0x10);
+}
+
+/* Full Linux power off (the chip then drops off USB until a bus reset) */
+__attribute__ ((unused))
+static inline void rtl_power_off (void) {
+    rtl_power_off_to (1);
 }
 
 static inline int rtl_init_device (const unsigned char *fw, u32 fw_size) {
@@ -478,15 +487,16 @@ static inline int rtl_init_device (const unsigned char *fw, u32 fw_size) {
     int n;
 
     if (rd8 (REG_MCU_FW_DL) & MCU_FW_RAM_SEL) {
-        printf ("rtl: chip still running from an earlier start, powering it off first\n");
-        rtl_power_off ();
+        printf ("rtl: chip still running from an earlier start, MAC off first\n");
+        rtl_power_off_to (0);
     }
     n = rtl_power_on ();
     if (n < 0) {
-        /* left in some other state by an earlier start: off, then on again */
-        printf ("rtl: power on failed (%s), powering off and retrying\n",
+        /* left in some other state by an earlier start: MAC off (the full
+         * power off makes the chip leave USB), then on again */
+        printf ("rtl: power on failed (%s), MAC off and retrying\n",
                 n == -1 ? "power ready" : "MAC enable");
-        rtl_power_off ();
+        rtl_power_off_to (0);
         udelay (10000);
         n = rtl_power_on ();
     }
