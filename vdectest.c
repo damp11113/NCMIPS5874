@@ -218,6 +218,7 @@ static void boot_setup (u32 tbl) {
  */
 static u32 au_count;
 static u32 desc_slice;              /* desc=1: w5/w6 at the first slice (run 6) */
+static unsigned char au_buf[1024 * 1024];      /* one access unit, 4-byte start codes */
 
 static u32 es_used (void) {
     return (ES_REG (ES_WR) + ES_SIZE - ES_REG (ES_RD) % ES_SIZE) % ES_SIZE;
@@ -251,7 +252,7 @@ static u32 next_sc (const unsigned char *s, u32 len, u32 p, u32 *sc) {
 static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
     volatile u32 *d;
     unsigned char *ring = (unsigned char *) (0xa0000000u | ES_PHYS);
-    u32 q = pos, sc, end = len, slice = pos, hdr = 0, seen_vcl = 0;
+    u32 q = pos, sc, end = len, hdr = 0, seen_vcl = 0;
     u32 wr = ES_REG (ES_WR) % ES_SIZE, n, first, pw;
 
     q = next_sc (s, len, q, &sc);
@@ -265,17 +266,38 @@ static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
         }
         if (type >= 1 && type <= 5 && !seen_vcl) {
             seen_vcl = 1;
-            slice = q + sc - 3;
             hdr = h;
         }
         nq = next_sc (s, len, q + sc + 1, &nsc);
         q = nq;
         sc = nsc;
     }
-    n = end - pos;
+    /* Every NAL with a 4-byte start code: our IDR slices (after SPS/PPS)
+     * have 3-byte codes, and run 10 lost most macroblocks (broken refs) */
+    {
+        u32 p = pos, o = 0, psc, nsc2;
+
+        p = next_sc (s, end, p, &psc);
+        while (p < end && o + 4 < sizeof (au_buf)) {
+            u32 body = p + psc, nxt = next_sc (s, end, body + 1, &nsc2), k = nxt - body;
+
+            if (o + 4 + k > sizeof (au_buf)) {
+                k = sizeof (au_buf) - o - 4;
+            }
+            au_buf[o] = 0;
+            au_buf[o + 1] = 0;
+            au_buf[o + 2] = 0;
+            au_buf[o + 3] = 1;
+            memcpy (au_buf + o + 4, s + body, k);
+            o += 4 + k;
+            p = nxt;
+            psc = nsc2;
+        }
+        n = o;
+    }
     first = ES_SIZE - wr < n ? ES_SIZE - wr : n;
-    memcpy (ring + wr, s + pos, first);
-    memcpy (ring, s + pos + first, n - first);
+    memcpy (ring + wr, au_buf, first);
+    memcpy (ring, au_buf + first, n - first);
 
     pw = ES_REG (ES_PTS_WR) % PTS_SIZE;
     d = (volatile u32 *) (0xa0000000u | (PTS_PHYS + pw));
@@ -285,15 +307,24 @@ static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
     d[3] = 0;
     d[4] = 0;
     if (desc_slice) {
-        /* run 6: w5 at the first slice -> SPS/PPS before it never parsed? */
-        d[5] = ES_PHYS + (wr + (slice - pos)) % ES_SIZE;
+        /* desc=1 (run 6): w5 at the first slice's 3-byte start code */
+        u32 o, t = 0;
+
+        for (o = 0; o + 5 < n; o++) {
+            if (au_buf[o] == 0 && au_buf[o + 1] == 0 && au_buf[o + 2] == 1 &&
+                (au_buf[o + 3] & 0x1f) >= 1 && (au_buf[o + 3] & 0x1f) <= 5) {
+                t = o;
+                break;
+            }
+        }
+        d[5] = ES_PHYS + (wr + t) % ES_SIZE;
         d[6] = (hdr << 8) | 1;
     } else {
-        /* w5 = the frame's own 3-byte start code (stock: w1 + 1 for almost
-         * every frame), w6 = its first NAL's header if that is a slice */
-        u32 first_sc = s[pos + 2] == 1 ? 0 : 1, h0 = s[pos + first_sc + 3];
+        /* w5 = the frame's own 3-byte start code (stock: w1 + 1), w6 = its
+         * first NAL's header if that is a slice, else 1 */
+        u32 h0 = au_buf[4];
 
-        d[5] = ES_PHYS + (wr + first_sc) % ES_SIZE;
+        d[5] = ES_PHYS + (wr + 1) % ES_SIZE;
         d[6] = ((h0 & 0x1f) >= 1 && (h0 & 0x1f) <= 5) ? (h0 << 8) | 1 : 1;
     }
     d[7] = au_count++;
