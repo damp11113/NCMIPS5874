@@ -112,6 +112,10 @@ int _start (int argc, char *argv[]) {
             sdk_overlay_on = argv[i][5] == '1';
             i++;
         }
+        if (i < argc && !strncmp (argv[i], "@saver=", 7)) {
+            sdk_saver_min = atoi (argv[i] + 7);
+            i++;
+        }
     }
     for (; i < argc && n < 31; i++) {
         args[n++] = argv[i];
@@ -490,6 +494,76 @@ static const struct { unsigned char ir; short btn; } ir_btn[] = {
     { IR_KEY_7, BTN_7 }, { IR_KEY_8, BTN_8 }, { IR_KEY_9, BTN_9 },
 };
 
+/* ---- screen saver ---- */
+
+/*
+ * A picture that never changes can leave a ghost on LCD panels (seen on a
+ * monitor after hours of a player screen; the 1080i output makes it
+ * worse). After sdk_saver_min minutes without a key the OSD layer is
+ * switched off, so the screen is black; the app keeps running and drawing
+ * into its (now hidden) frame buffer. The next key only wakes the screen
+ * and is not passed to the app.
+ */
+u32 sdk_saver_min = 5;
+static u32 saver_last_ms, saver_layer;
+static int saver_on, saver_eat_repeat;
+
+static void saver_wake (void) {
+    REG32 (0xbf44006c) = saver_layer;
+    REG32 (0xbf440060) = 0x00000001;
+    saver_on = 0;
+    printf ("sdk: screen saver off\n");
+}
+
+void sdk_saver_kick (void) {
+    saver_last_ms = ub_get_timer (0);
+    if (saver_on) {
+        saver_wake ();
+    }
+}
+
+static void saver_check (void) {
+    u32 now;
+
+    if (!sdk_saver_min || saver_on) {
+        return;
+    }
+    now = ub_get_timer (0);
+    if (!saver_last_ms) {
+        saver_last_ms = now;
+        return;
+    }
+    if (now - saver_last_ms < sdk_saver_min * 60000u) {
+        return;
+    }
+    if (REG32 (0xbf441028) != OSD_HDR_PHYS >> 3) {  /* not our OSD layer: leave it */
+        saver_last_ms = now;
+        return;
+    }
+    saver_layer = REG32 (0xbf44006c);
+    REG32 (0xbf44006c) = 0x00000010;                /* layers as U-Boot left them: no OSD */
+    REG32 (0xbf440060) = 0x00000001;
+    saver_on = 1;
+    printf ("sdk: screen saver on after %d min (any key wakes)\n", sdk_saver_min);
+}
+
+/* A key arrived: 1 = it only woke the screen (swallow it) */
+static int saver_key (int repeat) {
+    saver_last_ms = ub_get_timer (0);
+    if (saver_on) {
+        saver_wake ();
+        saver_eat_repeat = 1;
+        return 1;
+    }
+    if (saver_eat_repeat) {
+        if (repeat) {
+            return 1;                               /* the waking button is still held */
+        }
+        saver_eat_repeat = 0;
+    }
+    return 0;
+}
+
 /* ---- idle time + performance overlay ---- */
 
 int sdk_overlay_on;
@@ -531,6 +605,7 @@ void sdk_overlay_tick (void) {
     int cpu, mem;
     char line[64];
 
+    saver_check ();
     if (!sdk_overlay_on && !was_on) {
         return;
     }
@@ -616,6 +691,9 @@ int sdk_key_poll (struct sdk_key *k) {
     if (ir_poll (&ev) && ev.user == IR_USER_STOCK) {
         unsigned int i;
 
+        if (saver_key (ev.repeat)) {
+            return 0;
+        }
         for (i = 0; i < sizeof (ir_btn) / sizeof (ir_btn[0]); i++) {
             if (ir_btn[i].ir == ev.key) {
                 u32 now = ub_get_timer (0);
@@ -643,6 +721,9 @@ int sdk_key_poll (struct sdk_key *k) {
     if (ub_tstc ()) {
         int c = ub_getc ();
 
+        if (saver_key (0)) {
+            return 0;
+        }
         k->ch = c;
         if (c == 27) {                  /* ESC [ A-D = arrows, ESC alone = back */
             u32 t = ub_get_timer (0);

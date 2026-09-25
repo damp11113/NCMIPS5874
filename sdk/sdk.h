@@ -129,6 +129,15 @@ void sdk_idle (u32 us);
  * the launcher passes its setting to apps ("@ovl=1"). */
 extern int sdk_overlay_on;
 void sdk_overlay_tick (void);
+
+/* Screen saver: after sdk_saver_min minutes without a key (remote or
+ * serial) the OSD layer is switched off (black screen, the app keeps
+ * running); the next key only wakes the screen. 0 = off. Checked from
+ * sdk_key_poll / sdk_idle; the launcher passes its setting ("@saver=N").
+ * sdk_saver_kick () counts as a key press and wakes the screen (apps that
+ * read the remote with ir_poll themselves, or while a video plays). */
+extern u32 sdk_saver_min;
+void sdk_saver_kick (void);
 void sdk_reboot (void) __attribute__ ((noreturn));     /* watchdog reset, boots from flash */
 void sdk_cache_sync (u32 start, u32 len);
 void sdk_libc_reset (void);

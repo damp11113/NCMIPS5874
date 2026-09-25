@@ -265,6 +265,7 @@ static void poll_remote (void) {
         if (ev.user != IR_USER_STOCK) {
             continue;
         }
+        sdk_saver_kick ();                  /* SDK screen saver: a key, wake the screen */
         if (ev.key == IR_KEY_POWER) {
             exit (0);
         }

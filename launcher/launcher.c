@@ -24,7 +24,8 @@
  * overlay switch, which is passed to SDK apps ("@ovl=1"); MUTE toggles the
  * overlay in any SDK app. Second switch: big memory (AV core video memory
  * 8 MB, the rest becomes heap), applied by the boot script on the next
- * start. Both are saved in NCAPPS/SETTINGS.TXT (512 bytes, created by
+ * start. Third: screen saver minutes (1 / 5 / 10 / 30 / off, passed to SDK
+ * apps as "@saver=N"). All are saved in NCAPPS/SETTINGS.TXT (512 bytes, created by
  * stage.sh, overwritten in place: the only write to the stick).
  *
  * Keys: UP / DOWN select, OK start, INFO details on serial, EXIT = leave
@@ -181,6 +182,8 @@ static void settings_field (void *ctx, const char *k, const char *v) {
         set_bigmem = atoi (v) != 0;
     } else if (!strcasecmp (k, "overlay")) {
         sdk_overlay_on = atoi (v) != 0;
+    } else if (!strcasecmp (k, "saver")) {
+        sdk_saver_min = atoi (v);
     }
 }
 
@@ -199,15 +202,18 @@ static int settings_save (void) {
                   "# Read by the boot script, written by the launcher (SETTINGS page).\n"
                   "# bigmem 1: AV core video memory cut to 8 MB, about 60 MB more heap\n"
                   "bigmem=%d\n"
-                  "overlay=%d\n",
-                  set_bigmem, sdk_overlay_on ? 1 : 0);
+                  "overlay=%d\n"
+                  "# saver: minutes without a key until the screen goes black, 0 never\n"
+                  "saver=%d\n",
+                  set_bigmem, sdk_overlay_on ? 1 : 0, (int) sdk_saver_min);
     memset (buf + n, '#', sizeof (buf) - 1 - n);
     buf[sizeof (buf) - 1] = '\n';
     if (sdk_overwrite_sector_file (SETTINGS_PATH, buf, SETTINGS_MAGIC) < 0) {
         printf ("launcher: settings NOT saved\n");
         return -1;
     }
-    printf ("launcher: settings saved (bigmem=%d overlay=%d)\n", set_bigmem, sdk_overlay_on);
+    printf ("launcher: settings saved (bigmem=%d overlay=%d saver=%d)\n", set_bigmem,
+            sdk_overlay_on, (int) sdk_saver_min);
     return 0;
 }
 
@@ -732,6 +738,7 @@ static char *strtok_simple (char *s) {
 
 static int launch (const struct entry *e) {
     static char app_arg[SDK_PATH_MAX + 8], data_arg[SDK_PATH_MAX + 8], args[160];
+    static char saver_arg[16];
     static char *argv[24];                          /* static: survive the longjmp */
     static int rc;
     char path[SDK_PATH_MAX];
@@ -769,6 +776,8 @@ static int launch (const struct entry *e) {
         argv[argc++] = app_arg;
         argv[argc++] = data_arg;
         argv[argc++] = sdk_overlay_on ? "@ovl=1" : "@ovl=0";
+        snprintf (saver_arg, sizeof (saver_arg), "@saver=%d", (int) sdk_saver_min);
+        argv[argc++] = saver_arg;
     }
     set_field (args, sizeof (args), e->args);
     for (p = strtok_simple (args); p && argc < 23; p = strtok_simple (0)) {
@@ -796,12 +805,15 @@ static int launch (const struct entry *e) {
 extern size_t heap_total;
 
 static void about (void) {
-    static const char *help[2][2] = {
+    static const char *help[3][2] = {
         { "CPU / memory / USB / audio bar at the top of the screen.",
           "MUTE on the remote switches it in any app." },
         { "Gives the AV core 8 MB video memory instead of 50: much more",
           "heap for apps. Hardware video decoding may not work with it." },
+        { "Black screen after this long without a key (apps keep running,",
+          "music keeps playing). Protects the TV from image retention." },
     };
+    static const u32 saver_steps[] = { 1, 5, 10, 30, 0 };
     struct sdk_key k;
     int redraw = 1, item = 0, i;
     const char *status = "";
@@ -821,19 +833,26 @@ static void about (void) {
             fb_text (&fb, LIST_X, 264, "Montage M88CS8051B, MIPS 24KEc ~648 MHz, 128 MB, no OS",
                      2, GREY, TRANSPARENT);
             fb_text (&fb, LIST_X, 320, "Made by damp11113", 3, YELLOW, TRANSPARENT);
-            fb_text (&fb, LIST_X, 380, "github.com/damp11113/NCMIPS5874", 3, CYAN, TRANSPARENT);
+            fb_text (&fb, LIST_X, 370, "github.com/damp11113/NCMIPS5874", 3, CYAN, TRANSPARENT);
             snprintf (line, sizeof (line), "%d app entries    built %s", count, __DATE__);
-            fb_text (&fb, LIST_X, 450, line, 2, GREY, TRANSPARENT);
+            fb_text (&fb, LIST_X, 420, line, 2, GREY, TRANSPARENT);
 
-            for (i = 0; i < 2; i++) {
-                int y = 486 + i * 44;
+            for (i = 0; i < 3; i++) {
+                int y = 462 + i * 40;
 
                 if (i == item) {
-                    fb_rect (&fb, LIST_X - 10, y - 8, 1000, 40, HILITE);
+                    fb_rect (&fb, LIST_X - 10, y - 6, 1000, 36, HILITE);
                 }
                 if (i == 0) {
                     snprintf (line, sizeof (line), "Performance overlay:  %s",
                               sdk_overlay_on ? "ON " : "OFF");
+                } else if (i == 2) {
+                    if (sdk_saver_min) {
+                        snprintf (line, sizeof (line), "Screen saver:         %d min",
+                                  (int) sdk_saver_min);
+                    } else {
+                        snprintf (line, sizeof (line), "Screen saver:         OFF");
+                    }
                 } else if (set_bigmem == big_now) {
                     snprintf (line, sizeof (line), "Big memory:           %s  (heap %d MB)",
                               set_bigmem ? "ON " : "OFF", (int) (heap_total >> 20));
@@ -843,8 +862,8 @@ static void about (void) {
                 }
                 fb_text (&fb, LIST_X, y, line, 2, WHITE, TRANSPARENT);
             }
-            fb_text (&fb, LIST_X, 580, help[item][0], 2, GREY, TRANSPARENT);
-            fb_text (&fb, LIST_X, 606, help[item][1], 2, GREY, TRANSPARENT);
+            fb_text (&fb, LIST_X, 584, help[item][0], 2, GREY, TRANSPARENT);
+            fb_text (&fb, LIST_X, 608, help[item][1], 2, GREY, TRANSPARENT);
             fb_text (&fb, LIST_X, 634, status, 2, status_col, TRANSPARENT);
             fb_rect (&fb, 0, 660, fb.w, 60, PANEL);
             fb_text (&fb, LIST_X, 680, set_bigmem != big_now ?
@@ -859,14 +878,21 @@ static void about (void) {
         if (k.repeat) {
             continue;
         }
-        if (k.btn == BTN_UP || k.btn == BTN_DOWN) {
-            item = !item;
+        if (k.btn == BTN_UP) {
+            item = (item + 2) % 3;
+            redraw = 1;
+        } else if (k.btn == BTN_DOWN) {
+            item = (item + 1) % 3;
             redraw = 1;
         } else if (k.btn == BTN_OK) {
             if (item == 0) {
                 sdk_overlay_on = !sdk_overlay_on;
-            } else {
+            } else if (item == 1) {
                 set_bigmem = !set_bigmem;
+            } else {
+                for (i = 0; i < 4 && saver_steps[i] != sdk_saver_min; i++) {
+                }
+                sdk_saver_min = saver_steps[(i + 1) % 5];   /* unknown value: back to 1 */
             }
             if (settings_save () == 0) {
                 status = "Saved to the USB stick.";
@@ -898,6 +924,7 @@ static void standby (void) {
     struct sdk_key k;
 
     printf ("launcher: standby (POWER or STANDBY to wake)\n");
+    sdk_saver_min = 0;                      /* POWER must not only wake a screen saver */
     message ("Power off...", WHITE);
     ub_udelay (500000);
     fb_clear (&fb, TRANSPARENT);
@@ -989,6 +1016,7 @@ int main (int argc, char *argv[]) {
             if (countdown (idx)) {
                 launch (&entries[idx]);
                 osd_setup (&fb);
+                sdk_saver_kick ();
             }
         } else {
             printf ("launcher: autostart '%s' not found\n", autostart);
@@ -1028,6 +1056,7 @@ int main (int argc, char *argv[]) {
         } else if (k.btn == BTN_OK && count && !k.repeat) {
             launch (&entries[sel]);
             osd_setup (&fb);                    /* apps may clear or move it */
+            sdk_saver_kick ();                  /* the app's time was not ours */
             while (sdk_key_poll (&k)) {         /* drop keys left from the app */
             }
             redraw = 1;
