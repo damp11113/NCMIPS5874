@@ -13,9 +13,8 @@ av_launch 0x87e10000
 cpu 1 release 0x87e10000
 usb start
 mw.l 0xa7ef4f80 1
-echo '### decoder table from the stock firmware image (loadimg always writes to 0x80008000) ###'
-loadimg 1 lzma 0x300000 0x81500000 0x80008000
-cp.b 0x806ad08c 0x83e00000 0x1b00
+echo '### decoder table (VDECTBL.BIN, from your own RAM dump, see mkvdectbl.py) ###'
+fatload usb 0 0x83e00000 VDECTBL.BIN
 md.l 0x83e00000 4
 setenv a 0x80008000
 fatload usb 0 ${a} vdectest.bin

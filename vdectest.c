@@ -55,11 +55,10 @@ static volatile u32 msg[8] __attribute__ ((aligned (32)));   /* used uncached */
  * Buffers for the stock firmware's boot-time setup messages (avdump7/8):
  * zero-filled areas the AV core uses (state, user data, header info, a
  * 1 KB area it marks with 0xbeafdead) and a 0x1b00-byte coefficient
- * table. The table is the stock firmware's (at 0x806ad08c when it runs
- * from 0x80008000); vdectest.scr decompresses the stock firmware (loadimg
- * always writes it to 0x80008000) and copies the table to 0x83e00000
- * before loading vdectest over it (tbl=83e00000), so it is not shipped
- * here.
+ * table. The stock firmware builds that table at run time (0x806ad08c; the
+ * flash image has 0xff there), so it comes from a RAM dump of the running
+ * stock firmware: mkvdectbl.py app_ram.bin -> VDECTBL.BIN on the stick,
+ * loaded to 0x83e00000 by vdectest.scr (tbl=83e00000). Not shipped here.
  */
 #define TBL_SIZE        0x1b00
 static unsigned char vbuf_state[0x400] __attribute__ ((aligned (64)));  /* 0x110413 */
@@ -259,11 +258,10 @@ int main (int argc, char *argv[]) {
     ipc_send (0x0d0413, sync, VDEC_HEAP, 0, 1);
     ipc_send (0x0f0413, 0, VDEC_HEAP, 0, 1);
     ipc_send (0x280413, 3, 0, 0, 0);
-    ipc_send (0x010413, 1, 2, 0, 1);            /* start: format 1 = H.264 */
-    ipc_send (0x310413, 0, 2, 0, 1);
-    ipc_send (0x030413, 0, 2, 0, 1);            /* pause */
-
-    /* First data into the ring before telling the decoder about it */
+    /* Data in the ring before the start: the AV core's start path only sets
+     * up the ES ring / decoder (ves_addr, video_dec_init) when its input
+     * status says data is there (0x40000000); an empty ring defers the start
+     * (vdectest runs 1-3: 'error init' fallback, garbage decode). */
     {
         u32 n = len < ES_SIZE / 2 ? len : ES_SIZE / 2;
 
@@ -271,6 +269,10 @@ int main (int argc, char *argv[]) {
         pos = n;
         ES_REG (ES_WR) = n;
     }
+    ipc_send (0x010413, 1, 2, 0, 1);            /* start: format 1 = H.264 */
+    ipc_send (0x310413, 0, 2, 0, 1);
+    ipc_send (0x030413, 0, 2, 0, 1);            /* pause */
+
     ipc_send (0x300413, 0xa0000000u | ES_PHYS, ES_SIZE, 0, 1);
     ipc_send (0x0d0413, sync == 3 ? 1 : sync, ES_SIZE, 0, 1);
     ipc_send (0x0f0413, 0, ES_SIZE, 0, 1);
