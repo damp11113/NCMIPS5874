@@ -381,6 +381,52 @@ static void draw_browser (void) {
 static int acc_l[512], acc_r[512];
 static short mix[1024];
 
+/*
+ * SoundFont voice limit from the CPU time the synth needs: CP0 Count runs
+ * at 324 MHz = 6750 ticks per 48 kHz sample. Every 100 ms of audio: above
+ * 70 % (or the audio ring running low) fewer voices are allowed, so notes
+ * get stolen instead of the sound stuttering; below 45 % the limit grows
+ * back to the maximum.
+ */
+#define TICKS_PER_SAMPLE    6750u
+static u32 load_ticks, load_samples;
+int synth_load_pct;                             /* last measured, for the screen */
+
+static inline u32 cp0_count (void) {
+    u32 v;
+
+    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    return v;
+}
+
+static void voice_budget (u32 ticks, u32 n, u32 queued) {
+    int active, lim = synth_sf2_limit;
+
+    load_ticks += ticks;
+    load_samples += n;
+    if (queued < 1024 && engine == &synth_sf2) {    /* nearly empty: act now */
+        active = synth_sf2.voices ();
+        synth_sf2_limit = active > 24 ? active - active / 4 : 16;
+    }
+    if (load_samples < SYNTH_RATE / 10) {
+        return;
+    }
+    synth_load_pct = (int) ((unsigned long long) load_ticks * 100 /
+                            ((unsigned long long) load_samples * TICKS_PER_SAMPLE));
+    load_ticks = load_samples = 0;
+    if (engine != &synth_sf2) {
+        return;
+    }
+    active = synth_sf2.voices ();
+    if (synth_load_pct > 70 && active > 16) {
+        lim = active * 60 / synth_load_pct;     /* aim for ~60 % */
+        lim = lim < 16 ? 16 : lim;
+    } else if (synth_load_pct < 45 && lim < synth_sf2.max_voices) {
+        lim += 4;
+    }
+    synth_sf2_limit = lim > synth_sf2.max_voices ? synth_sf2.max_voices : lim;
+}
+
 static void pump (void) {
     u32 queued = ((AUD_REG (0x104) & AUD_MASK) << 3) / AUD_FRAME, n, i;
 
@@ -392,7 +438,10 @@ static void pump (void) {
     memset (acc_l, 0, n * sizeof (int));
     memset (acc_r, 0, n * sizeof (int));
     if (!paused) {                              /* paused: zeros, not a held sample */
+        u32 t0 = cp0_count ();
+
         smf_render (acc_l, acc_r, n);
+        voice_budget (cp0_count () - t0, n, queued);
     }
     for (i = 0; i < n; i++) {
         int l = acc_l[i] * vol / 100, r = acc_r[i] * vol / 100;
@@ -440,9 +489,11 @@ static void draw_status (void) {
     snprintf (line, sizeof (line), "%d:%02d / %d:%02d  %s ", pos / 60000, pos / 1000 % 60,
               len / 60000, len / 1000 % 60, sk.active ? "SEEK  " : paused ? "PAUSED" : "      ");
     fb_text (&fb, 40, 350, line, 2, WHITE, BG);
-    snprintf (line, sizeof (line), "Tempo %3d bpm   voices %2d/%d   vol %3d%%", smf_tempo_bpm (),
-              engine->voices (), engine->max_voices, vol);
+    snprintf (line, sizeof (line), "Tempo %3d bpm   vol %3d%%", smf_tempo_bpm (), vol);
     fb_text (&fb, 40, 390, line, 2, WHITE, BG);
+    snprintf (line, sizeof (line), "Voices %3d/%-3d  synth CPU %3d%%", engine->voices (),
+              engine == &synth_sf2 ? synth_sf2_limit : engine->max_voices, synth_load_pct);
+    fb_text (&fb, 40, 424, line, 2, synth_load_pct > 70 ? YELLOW : WHITE, BG);
 
     /* 16 channels: instrument + activity */
     for (ch = 0; ch < 16; ch++) {

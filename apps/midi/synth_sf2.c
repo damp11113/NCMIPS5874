@@ -20,7 +20,8 @@
  * Not done: filters, modulation envelope, LFOs, modulators (the default
  * ones are approximated: velocity, volume and expression as 40 log10).
  *
- * Mixing: 48 voices, linear interpolation, gain updated every 32 samples.
+ * Mixing: up to 128 voices (synth_sf2_limit: the player lowers it when the
+ * CPU runs short), linear interpolation, gain updated every 32 samples.
  */
 #include <string.h>
 #include <stdio.h>
@@ -28,7 +29,7 @@
 
 #include "synth.h"
 
-#define NVOICES     48
+#define NVOICES     128
 #define BLOCK       32
 #define MASTER      11600           /* Q15 master gain (headroom for many voices) */
 #define MAX_CB      1440
@@ -293,14 +294,23 @@ static int chan_cb (int ch) {
     return amp_to_cb (chans[ch].volume) + amp_to_cb (chans[ch].expression);
 }
 
+int synth_sf2_limit = NVOICES;
+
 static int alloc_voice (void) {
-    int i, best = -1, best_cb = -1;
+    int i, best = -1, best_cb = -1, free_i = -1, n = 0;
     unsigned best_age = ~0u;
 
     for (i = 0; i < NVOICES; i++) {
         if (!voices[i].active) {
-            return i;
+            if (free_i < 0) {
+                free_i = i;
+            }
+        } else {
+            n++;
         }
+    }
+    if (free_i >= 0 && n < synth_sf2_limit) {
+        return free_i;
     }
     for (i = 0; i < NVOICES; i++) {             /* quietest released voice */
         if (voices[i].released && voices[i].env_cb > best_cb) {
@@ -507,31 +517,75 @@ static void envelope (struct voice *v) {
     v->gain_r = v->pan >= 0 ? lin : (int) ((long long) lin * (500 + v->pan) / 500);
 }
 
+/*
+ * Same result as checking the sample end and the loop point after every
+ * sample, but in runs: first how many output samples fit before the
+ * position reaches the next boundary (loop end or sample end), then a
+ * plain loop with everything in registers (the voice fields can't stay in
+ * registers when left / right are written through pointers). Silent voices
+ * (gain 0, e.g. quiet attack start) only move their position.
+ */
 static void mix_voice (struct voice *v, int *left, int *right, int n) {
     const short *d = v->data;
-    int i;
+    uint32_t pos = v->pos, frac = v->frac, step = v->step;
+    int gl = v->gain_l, gr = v->gain_r;
+    int looping = v->loop_mode && (v->loop_mode == 1 || !v->released);
+    uint32_t bound = v->end - 1;
 
-    for (i = 0; i < n; i++) {
-        uint32_t p = v->pos;
-        int a, b, s;
-
-        if (p + 1 >= v->end) {
-            v->active = 0;
-            return;
-        }
-        a = d[p];
-        b = d[p + 1];
-        s = a + (((b - a) * (int) v->frac) >> 16);
-        left[i] += (s * v->gain_l) >> 15;
-        right[i] += (s * v->gain_r) >> 15;
-
-        v->frac += v->step;
-        v->pos += v->frac >> 16;
-        v->frac &= 0xffff;
-        if (v->loop_mode && (v->loop_mode == 1 || !v->released) && v->pos >= v->loop_end) {
-            v->pos -= v->loop_end - v->loop_start;
-        }
+    if (looping && v->loop_end < bound) {
+        bound = v->loop_end;
     }
+    while (n > 0) {
+        uint32_t dist, k;
+        int i, m;
+
+        if (pos >= bound) {
+            if (looping && pos >= v->loop_end) {
+                pos -= v->loop_end - v->loop_start;
+            }
+            if (pos + 1 >= v->end) {
+                v->active = 0;
+                break;
+            }
+            if (pos >= bound) {                 /* wrapped at or past the bound: one sample */
+                k = 1;
+                goto run;
+            }
+        }
+        dist = bound - pos;
+        if (dist > 0xffff || step > (1u << 26)) {
+            k = step > (1u << 26) ? 1 : (uint32_t) n;
+        } else {
+            k = ((dist << 16) - frac - 1) / (step ? step : 1) + 1;
+        }
+run:
+        m = k < (uint32_t) n ? (int) k : n;
+        if (gl | gr) {
+            for (i = 0; i < m; i++) {
+                int a = d[pos], b = d[pos + 1];
+                int s = a + (((b - a) * (int) frac) >> 16);
+
+                left[i] += (s * gl) >> 15;
+                right[i] += (s * gr) >> 15;
+                frac += step;
+                pos += frac >> 16;
+                frac &= 0xffff;
+            }
+        } else {
+            uint64_t f = frac + (uint64_t) step * m;
+
+            pos += (uint32_t) (f >> 16);
+            frac = (uint32_t) f & 0xffff;
+        }
+        left += m;
+        right += m;
+        n -= m;
+    }
+    if (v->active && looping && pos >= v->loop_end) {   /* as if checked after the sample: */
+        pos -= v->loop_end - v->loop_start;             /* a release before the next call */
+    }                                                   /* must not undo this wrap */
+    v->pos = pos;
+    v->frac = frac;
 }
 
 /* ---- synth interface ---- */
