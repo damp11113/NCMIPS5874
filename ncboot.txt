@@ -4,7 +4,8 @@ setenv ncvsz 0x800000
 usb start
 if fatload usb 0 0x82400000 /NCAPPS/SETTINGS.TXT; then env import -t 0x82400000 ${filesize}; fi
 setenv ncstock 0
-if itest.l *0xa3ff0000 == 0x4e435354; then mw.l 0xa3ff0000 0; setenv bigmem 0; setenv ncstock 1; echo '### one-shot: stock firmware with normal AV memory ###'; fi
+mw.l 0x82500000 0x4e435354
+if cmp.l 0xa3ff0000 0x82500000 1; then mw.l 0xa3ff0000 0; setenv bigmem 0; setenv ncstock 1; echo '### one-shot: stock firmware with normal AV memory ###'; fi
 usb stop
 setenv avenv_AVCPU_CONFIG 128M_AD_HEVC
 if test "${bigmem}" = 1; then echo '### big memory: AV video memory' ${ncvsz} '###'; setenv nc_bigmem 1; setenv avenv_VIDEO_FW_CFG_SIZE ${ncvsz}; else setenv nc_bigmem; setenv avenv_VIDEO_FW_CFG_SIZE 0x31ac000; fi

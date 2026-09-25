@@ -1047,8 +1047,11 @@ int main (int argc, char *argv[]) {
              * (RAM survives the watchdog reset), clears it, starts the AV
              * core normally and boots the stock firmware directly. */
             message ("Restarting into the stock firmware (normal memory)...", WHITE);
-            printf ("launcher: big memory on -> restart with stock marker\n");
             REG32 (STOCK_MARKER_ADDR) = STOCK_MARKER;
+            __asm__ volatile ("sync" : : : "memory");
+            printf ("launcher: big memory on -> restart with stock marker (%08x)\n",
+                    REG32 (STOCK_MARKER_ADDR));
+            ub_udelay (100000);                 /* marker in RAM, serial drained */
             sdk_reboot ();
         } else if (k.btn == BTN_BACK && !k.repeat) {
             message ("Booting the stock firmware...", WHITE);
