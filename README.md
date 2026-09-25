@@ -7,7 +7,7 @@
 
 Running my own code on a cheap DVB-T2/IPTV set-top box (board
 `PCB-CS8051M`) — no Linux, no stock firmware, straight from U-Boot — with
-graphics on HDMI, the front-panel button and LED, and the `libgfx` graphics
+graphics on HDMI, the front-panel button and LED, and the [libgfx](https://github.com/DPSoftware-Technologies/MFoES02w/tree/master/libs/libgfx) graphics
 library ported to it.
 
 Everything here was found by reverse engineering (there is no datasheet).
