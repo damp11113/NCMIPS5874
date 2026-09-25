@@ -9,6 +9,8 @@
  *   go 0x82000000        hook at printf ("app_entry_task start"), $s2 = printf
  *   go 0x82000000 uio    hook after the input/IR driver setup, replaces
  *                        printf ("uio init end") at 0x8017e378 (AM_Input_Init)
+ *   go 0x82000000 ipc    hook on the AV core IPC send function 0x801a7e4c
+ *                        (hook_entry_ipc.S)
  *   go 0x82000000 irkey  hook on every remote key press (IR key callback
  *                        0x8017e598), needs a hook built with hook_entry_irkey.S
  */
@@ -32,6 +34,10 @@ static const u32 expect_uio[2] = { 0x0060f809, 0x2484d500 };
 /* IR key callback (a0 = user code, a1 = key): addiu sp,-24; li v0,0xfe01 */
 #define IRKEY_SITE  0x8017e598
 static const u32 expect_irkey[2] = { 0x27bdffe8, 0x3402fe01 };
+
+/* 'ipc': AV core IPC send function (a0 id, a1 msg, a2 wait) */
+#define IPC_SITE    0x801a7e4c
+static const u32 expect_ipc[2] = { 0x27bdffd0, 0xafb40024 };
 
 static void cache_sync (u32 start, u32 len) {
     u32 a;
@@ -89,6 +95,10 @@ int main (int argc, char *argv[]) {
     if (argc > 1 && strcmp (argv[1], "uio") == 0) {
         /* delay slot (a0 = string) kept */
         return patch_two (UIO_SITE, expect_uio, JAL (HOOK_CODE), 0, 1, "uio init end");
+    }
+    if (argc > 1 && strcmp (argv[1], "ipc") == 0) {
+        /* hook_entry_ipc.S re-runs the two replaced instructions */
+        return patch_two (IPC_SITE, expect_ipc, J (HOOK_CODE), 0, 0, "AV IPC send");
     }
     if (argc > 1 && strcmp (argv[1], "irkey") == 0) {
         /* hook_entry_irkey.S re-runs the two replaced instructions */
