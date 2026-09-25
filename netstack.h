@@ -587,31 +587,27 @@ static void tcp_rx (u32 src, const unsigned char *p, u32 len) {
  * still waits for its ACK). */
 __attribute__ ((unused))
 static int tcp_connect (u32 ip, u32 port, void (*fn) (const unsigned char *d, u32 len)) {
-    u32 t, w;
+    u32 t, w, isn;
 
     tcp_data_fn = fn;
 
     tcp_rip = ip;
     tcp_rport = port;
     tcp_lport = 49152 + (net_rand () & 0x3fff);
-    tcp_snd_una = tcp_snd_nxt = net_rand ();
+    isn = net_rand ();
+    tcp_snd_una = isn;
+    tcp_snd_nxt = isn + 1;                          /* the SYN takes one number */
     tcp_rcv_nxt = 0;
     tcp_rx_bytes = tcp_dup = 0;
     tcp_state = TCP_SYN_SENT;
     for (t = 0; t < 5 && tcp_state == TCP_SYN_SENT; t++) {
-        if (tcp_seg (tcp_snd_nxt, TF_SYN, 0, 0) < 0) {
+        if (tcp_seg (isn, TF_SYN, 0, 0) < 0) {     /* every (re)try: seq = ISN */
             wlan_poll (300, net_rx);                /* no MAC yet: ARP went out */
             continue;
-        }
-        if (t == 0) {
-            tcp_snd_nxt++;
         }
         for (w = 0; w < 10 && tcp_state == TCP_SYN_SENT; w++) {
             wlan_poll (100, net_rx);
         }
-    }
-    if (t && tcp_snd_nxt == tcp_snd_una) {
-        tcp_snd_nxt++;                              /* SYN never went out */
     }
     return tcp_state == TCP_ESTABLISHED ? 0 : -1;
 }
