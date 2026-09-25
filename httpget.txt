@@ -9,4 +9,4 @@ go 83c00000
 fatload usb 0 82000000 rtl8188fufw.bin
 usb port 1
 usb reset
-go ${a} 82000000 ${filesize} 83d00000 ${host} ${path}
+go ${a} 82000000 ${filesize} 83d00000 ${host} ${path} ${netopt}

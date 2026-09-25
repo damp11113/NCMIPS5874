@@ -9,7 +9,9 @@
  *   fatload usb 0 82000000 rtl8188fufw.bin     (last: ${filesize} = fw size)
  *   usb port 1
  *   usb reset
- *   go ${a} 82000000 ${filesize} 83d00000 [host [path]] [dbg]
+ *   go ${a} 82000000 ${filesize} 83d00000 [host[:port] [/path]] [rate=N] [dbg]
+ *        host may be an IP address (no DNS); rate = TX rate index of data
+ *        frames (hex, Linux DESC_RATE_*: 0 1M, 3 11M, 8 24M default, b 54M)
  *                                          (default example.com /)
  */
 #include "wlan.h"
@@ -49,17 +51,77 @@ static void page_data (const unsigned char *d, u32 len) {
     }
 }
 
+/* Download progress, once a second (tcp_read_all hook) */
+static u32 prog_t0, prog_last, prog_bytes;
+
+static void progress (void) {
+    u32 now = get_timer (0);
+
+    if (now - prog_last >= 1000 && tcp_rx_bytes > 64 * 1024) {
+        printf ("\n  %d KB, %d KB/s now, %d KB/s average", tcp_rx_bytes / 1024,
+                (int) ((tcp_rx_bytes - prog_bytes) / (now - prog_last)),
+                (int) (tcp_rx_bytes / (now - prog_t0 + 1)));
+        prog_last = now;
+        prog_bytes = tcp_rx_bytes;
+    }
+}
+
+/* "a.b.c.d" -> address, 0 if not an address */
+static u32 parse_ip (const char *s) {
+    u32 ip = 0, part = 0, dots = 0, digits = 0;
+
+    for (; *s; s++) {
+        if (*s >= '0' && *s <= '9') {
+            part = part * 10 + (*s - '0');
+            digits++;
+        } else if (*s == '.' && digits && part < 256) {
+            ip = (ip << 8) | part;
+            part = digits = 0;
+            dots++;
+        } else {
+            return 0;
+        }
+    }
+    return dots == 3 && digits && part < 256 ? (ip << 8) | part : 0;
+}
+
 int main (int argc, char *argv[]) {
-    const char *host = argc > 4 && memcmp (argv[4], "dbg", 3) ? argv[4] : "example.com";
-    const char *path = argc > 5 && argv[5][0] == '/' ? argv[5] : "/";
+    static char host[128];
+    const char *path = "/";
     static char req[640];
-    u32 ip, t0, ms, n;
+    u32 ip, t0, ms, n, port = 80;
+    int i;
+    char *colon;
 
     if (argc < 4) {
-        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [host [path]] [dbg]\n");
+        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [host[:port] [/path]] "
+                "[rate=N] [dbg]\n");
         return 1;
     }
-    net_debug = !memcmp (argv[argc - 1], "dbg", 3);     /* print every TCP segment */
+    cat (host, "example.com");
+    for (i = 4; i < argc; i++) {
+        if (!memcmp (argv[i], "dbg", 3)) {
+            net_debug = 1;                          /* print every TCP segment */
+        } else if (!memcmp (argv[i], "rate=", 5)) {
+            wlan_data_rate = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == '/') {
+            path = argv[i];
+        } else if (strlen (argv[i]) < sizeof (host)) {
+            cat (host, argv[i]);
+        }
+    }
+    colon = host;
+    while (*colon && *colon != ':') {
+        colon++;
+    }
+    if (*colon) {
+        *colon = 0;
+        port = 0;
+        for (colon++; *colon >= '0' && *colon <= '9'; colon++) {
+            port = port * 10 + (*colon - '0');
+        }
+    }
+    printf ("data TX rate index %d\n", wlan_data_rate);
     if (wlan_join ((const unsigned char *) parse_hex (argv[1]), parse_hex (argv[2]),
                    (const char *) parse_hex (argv[3])) < 0) {
         return 1;
@@ -72,19 +134,22 @@ int main (int argc, char *argv[]) {
     arp_send (1, 0, net_gw);                        /* router MAC for everything outside */
     wlan_poll (300, net_rx);
 
-    t0 = get_timer (0);
-    ip = dns_resolve (host);
+    ip = parse_ip (host);
     if (!ip) {
-        printf ("DNS: \"%s\" not found\n", host);
-        return 1;
+        t0 = get_timer (0);
+        ip = dns_resolve (host);
+        if (!ip) {
+            printf ("DNS: \"%s\" not found\n", host);
+            return 1;
+        }
+        printf ("DNS: %s = ", host);
+        print_ip ("", ip);
+        printf (" (%d ms)\n", (int) get_timer (t0));
     }
-    printf ("DNS: %s = ", host);
-    print_ip ("", ip);
-    printf (" (%d ms)\n", (int) get_timer (t0));
 
     t0 = get_timer (0);
-    if (tcp_connect (ip, 80, page_data) < 0) {
-        printf ("TCP: no connection to port 80\n");
+    if (tcp_connect (ip, port, page_data) < 0) {
+        printf ("TCP: no connection to port %d\n", port);
         return 1;
     }
     printf ("TCP: connected in %d ms\n", (int) get_timer (t0));
@@ -106,6 +171,9 @@ int main (int argc, char *argv[]) {
                 wlan_rx_data, wlan_tx_data, wlan_rx_undecrypted, wlan_rx_max, net_ip_rx);
         return 1;
     }
+    prog_t0 = prog_last = get_timer (0);
+    prog_bytes = 0;
+    tcp_progress_fn = progress;
     tcp_read_all (5000);
     ms = get_timer (t0);
     printf ("\n----- end -----\n%d bytes in %d ms (%d KB/s), %d out-of-order segments%s\n",

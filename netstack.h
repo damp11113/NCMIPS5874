@@ -469,11 +469,12 @@ static u32 dns_resolve (const char *name) {
 enum { TCP_CLOSED, TCP_SYN_SENT, TCP_ESTABLISHED, TCP_FIN_WAIT, TCP_DONE };
 
 #define TCP_MSS         1400
-#define TCP_WINDOW      16384
+#define TCP_WINDOW      65535          /* largest without window scaling */
 
 static u32 tcp_state, tcp_rip, tcp_rport, tcp_lport;
 static u32 tcp_snd_una, tcp_snd_nxt, tcp_rcv_nxt;
-static u32 tcp_rx_bytes, tcp_dup;
+static u32 tcp_rx_bytes, tcp_dup, tcp_ack_due;
+static void (*tcp_progress_fn) (void);        /* called while tcp_read_all waits */
 static void (*tcp_data_fn) (const unsigned char *d, u32 len);
 
 #define TF_FIN  0x01
@@ -565,8 +566,10 @@ static void tcp_rx (u32 src, const unsigned char *p, u32 len) {
             }
             tcp_rcv_nxt += dlen;
             tcp_rx_bytes += dlen;
+            tcp_ack_due++;
         } else {
             tcp_dup++;                              /* out of order / repeat: ACK tells */
+            tcp_ack_due += 2;                       /* ... at once (fast retransmit) */
         }
     }
     if ((flags & TF_FIN) && seq + dlen == tcp_rcv_nxt) {
@@ -577,8 +580,18 @@ static void tcp_rx (u32 src, const unsigned char *p, u32 len) {
         }
         tcp_state = TCP_DONE;
     }
-    if (dlen || (flags & TF_FIN)) {
+    /* Delayed ACK: one per 2 full segments; short segments (end of a
+     * burst), FIN and out-of-order data at once; the rest by tcp_ack_flush */
+    if ((flags & TF_FIN) || tcp_ack_due >= 2 || (dlen && dlen < TCP_MSS)) {
         tcp_seg (tcp_snd_nxt, TF_ACK, 0, 0);
+        tcp_ack_due = 0;
+    }
+}
+
+static void tcp_ack_flush (void) {
+    if (tcp_ack_due && tcp_state != TCP_CLOSED) {
+        tcp_seg (tcp_snd_nxt, TF_ACK, 0, 0);
+        tcp_ack_due = 0;
     }
 }
 
@@ -598,7 +611,7 @@ static int tcp_connect (u32 ip, u32 port, void (*fn) (const unsigned char *d, u3
     tcp_snd_una = isn;
     tcp_snd_nxt = isn + 1;                          /* the SYN takes one number */
     tcp_rcv_nxt = 0;
-    tcp_rx_bytes = tcp_dup = 0;
+    tcp_rx_bytes = tcp_dup = tcp_ack_due = 0;
     tcp_state = TCP_SYN_SENT;
     for (t = 0; t < 5 && tcp_state == TCP_SYN_SENT; t++) {
         if (tcp_seg (isn, TF_SYN, 0, 0) < 0) {     /* every (re)try: seq = ISN */
@@ -645,12 +658,16 @@ static void tcp_read_all (u32 idle_ms) {
     u32 last = tcp_rx_bytes, idle = 0;
 
     while (tcp_state == TCP_ESTABLISHED && idle < idle_ms) {
-        wlan_poll (200, net_rx);
+        wlan_poll (50, net_rx);
+        tcp_ack_flush ();                           /* no delayed ACK older than ~50 ms */
         if (tcp_rx_bytes != last) {
             last = tcp_rx_bytes;
             idle = 0;
         } else {
-            idle += 200;
+            idle += 50;
+        }
+        if (tcp_progress_fn) {
+            tcp_progress_fn ();
         }
     }
     tcp_data_fn = 0;

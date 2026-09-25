@@ -51,6 +51,9 @@ static unsigned char ap_rates[2 + 16], ap_xrates[2 + 16];
 static int ap_rsn_ok;
 static int wlan_keys_on;                /* keys in the CAM: data is encrypted */
 static int wlan_data_be;                /* 1: data on the BE queue / EP 0x03 */
+/* TX rate of data frames (Linux DESC_RATE_*: 0 1M, 3 11M, 4 6M, 8 24M,
+ * 0x0b 54M). Management and EAPOL frames stay at 1 Mbit/s. */
+static u32 wlan_data_rate = 0x08;
 static u32 wlan_pn = 1;                 /* CCMP packet number (48 bits) */
 static u32 wlan_rx_frames, wlan_rx_data, wlan_rx_undecrypted, wlan_tx_data, wlan_rx_max;
 
@@ -130,12 +133,12 @@ static unsigned char *hdr (unsigned char *f, u32 fc, const unsigned char *a1,
 }
 
 /*
- * Data frame out. Like rtl_tx_mgmt (MGNT queue, EP 0x02, 1 Mbit/s), or
- * with wlan_data_be on the BE queue / EP 0x03 (Linux: 2 OUT endpoints ->
- * BE on the second). sec: TX descriptor security type AES, the chip
+ * Data frame out. Like rtl_tx_mgmt (MGNT queue, EP 0x02) but at the given
+ * rate, or with wlan_data_be on the BE queue / EP 0x03 (Linux: 2 OUT
+ * endpoints -> BE on the second). sec: TX descriptor security type AES, the chip
  * encrypts and appends the 8-byte MIC (frame carries the CCMP header).
  */
-static int wlan_tx (const unsigned char *frame, u32 len, int sec) {
+static int wlan_tx (const unsigned char *frame, u32 len, int sec, u32 rate) {
     unsigned char *d = rtl_txbuf;
     u32 i, w, csum = 0;
     int actual;
@@ -162,7 +165,7 @@ static int wlan_tx (const unsigned char *frame, u32 len, int sec) {
     d[8] = w; d[9] = w >> 8; d[10] = w >> 16; d[11] = w >> 24;
     w = 1u << 8;                                    /* USE_DRIVER_RATE */
     d[12] = w; d[13] = w >> 8; d[14] = w >> 16; d[15] = w >> 24;
-    w = 0 | (6u << 18) | (1u << 17);                /* 1M, retry limit 6 */
+    w = (rate & 0x7f) | (6u << 18) | (1u << 17);    /* rate (DESC_RATE_*), retry limit 6 */
     d[16] = w; d[17] = w >> 8; d[18] = w >> 16; d[19] = w >> 24;
     w = ((frame[22] | (frame[23] << 8)) >> 4) << 12;
     d[36] = w; d[37] = w >> 8; d[38] = w >> 16; d[39] = w >> 24;
@@ -722,7 +725,7 @@ static int wlan_send (const unsigned char *dst, u32 type, const unsigned char *d
     put_be16 (p + 6, type);
     memcpy (p + 8, data, len);
     wlan_tx_data++;
-    return wlan_tx (f, (p + 8 + len) - f, wlan_keys_on);
+    return wlan_tx (f, (p + 8 + len) - f, wlan_keys_on, wlan_data_rate);
 }
 
 #endif
