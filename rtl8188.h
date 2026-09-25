@@ -483,6 +483,14 @@ static inline int rtl_init_device (const unsigned char *fw, u32 fw_size) {
     }
     n = rtl_power_on ();
     if (n < 0) {
+        /* left in some other state by an earlier start: off, then on again */
+        printf ("rtl: power on failed (%s), powering off and retrying\n",
+                n == -1 ? "power ready" : "MAC enable");
+        rtl_power_off ();
+        udelay (10000);
+        n = rtl_power_on ();
+    }
+    if (n < 0) {
         printf ("rtl: power on failed (%s)\n", n == -1 ? "power ready" : "MAC enable");
         return -1;
     }
