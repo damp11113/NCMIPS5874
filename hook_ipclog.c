@@ -19,6 +19,14 @@ typedef int (*printf_t) (const char *fmt, ...);
 
 static u32 seq = 1;                 /* in .data: hook .bss is never cleared */
 
+/* Every message is also kept here, and the whole history is printed once
+ * at message HIST_AT: the boot-time messages come before serial logging
+ * is usually running. */
+#define HIST_MAX    64
+#define HIST_AT     40
+static u32 hist[HIST_MAX][6] = { { 1 } };       /* initialised: stays in .data */
+static u32 hist_done = 0x55;                    /* 0x55 = not printed yet */
+
 static u32 ram_ptr (u32 v) {
     if ((v & 3) || v < 0x80000000u || v >= 0xc0000000u || (v & 0x1fffffffu) >= 0x08000000u) {
         return 0;
@@ -32,8 +40,27 @@ void hook_main (u32 id, const u32 *msg, u32 ack) {
     u32 old_mute = FW_UART_MUTE;
     u32 i, j;
 
+    if (seq <= HIST_MAX) {
+        u32 *h = hist[seq - 1];
+
+        h[0] = id;
+        h[1] = msg[0];
+        h[2] = msg[1];
+        h[3] = msg[2];
+        h[4] = msg[3];
+        h[5] = ack & 0xff;
+    }
     FW_PRINT_EN = 1;
     FW_UART_MUTE = 0;
+    if (seq >= HIST_AT && hist_done == 0x55) {
+        hist_done = 1;
+        pf ("=== IPC HISTORY #1..#%d ===\n", seq - 1);
+        for (i = 0; i < seq - 1 && i < HIST_MAX; i++) {
+            pf ("H #%d id %08x cmd %08x p %08x %08x %08x ack %d\n", i + 1, hist[i][0], hist[i][1],
+                hist[i][2], hist[i][3], hist[i][4], hist[i][5]);
+        }
+        pf ("=== IPC HISTORY END ===\n");
+    }
     pf ("IPC #%d id %08x cmd %08x p %08x %08x %08x t %d ack %d\n", seq, id, msg[0], msg[1],
         msg[2], msg[3], msg[4], ack & 0xff);
     for (i = 1; i <= 3; i++) {
