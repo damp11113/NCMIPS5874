@@ -85,6 +85,35 @@ void hook_main (u32 user, u32 key) {
     dump_words (pf, "S", DEC_BASE + 0x1000, 0x80);
     dump_words (pf, "S", MBOX_BASE, 0x80);
 
+    /* Video PTS / ES-descriptor ring (0xbf260118 start, +0x20 end, +0x30
+     * wr offset): the 32 words before the write offset, and the ES ring
+     * bytes at the read offset (+0x1c start, +0x2c rd offset). */
+    {
+        u32 ps = REG32 (DEC_BASE + 0x118) & 0x1fffffffu, pe = REG32 (DEC_BASE + 0x120) & 0x1fffffffu;
+        u32 pw = REG32 (DEC_BASE + 0x130), es = REG32 (DEC_BASE + 0x11c) & 0x1ffffff8u;
+        u32 er = REG32 (DEC_BASE + 0x12c), from;
+
+        if (ps && pe > ps && ps < 0x08000000u) {
+            u32 size = pe + 1 - ps;
+
+            from = (pw + size - 0x80) % size;
+            pf ("D pts ring %08x-%08x wr %x, 32 words from offset %x:\n", ps, pe, pw, from);
+            for (i = 0; i < 32; i += 4) {
+                u32 a = 0xa0000000u | (ps + (from + i * 4) % size);
+
+                pf ("D %05x: %08x %08x %08x %08x\n", (from + i * 4) % size, REG32 (a),
+                    REG32 (a + 4), REG32 (a + 8), REG32 (a + 12));
+            }
+        }
+        if (es && es < 0x08000000u) {
+            u32 a = 0xa0000000u | ((es + er) & ~15u);
+
+            pf ("E es ring %08x rd %x: %08x %08x %08x %08x %08x %08x %08x %08x\n", es, er,
+                REG32 (a), REG32 (a + 4), REG32 (a + 8), REG32 (a + 12), REG32 (a + 16),
+                REG32 (a + 20), REG32 (a + 24), REG32 (a + 28));
+        }
+    }
+
     /* Message structs behind the mailbox words */
     for (i = 0; i < 32; i++) {
         u32 v = REG32 (MBOX_BASE + 0x14 + i * 4), p = ram_ptr (v);
