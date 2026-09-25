@@ -332,11 +332,13 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, g0 = 3, i, t_show, status;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, g0 = 3, prefill = 0, i, t_show, status;
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'p' && argv[i][3] == '=') {    /* pre=1: prefill */
+            prefill = parse_hex (argv[i] + 4);
         } else if (argv[i][0] == 'g' && argv[i][1] == '=') {    /* g=<hex>: 0xbf260000 */
             g0 = parse_hex (argv[i] + 2);
         } else if (argv[i][0] == 'r' && argv[i][3] == '=') {    /* r38=<hex>: +0x38 control */
@@ -363,12 +365,14 @@ int main (int argc, char *argv[]) {
      * desc 1', AV core init_vdec_param 0x87e418f0); without them it misreads
      * slices (invalid PPS). The rest looks like demux setup (0xe0 = MPEG
      * video stream id), copied as is. */
-    ES_REG (0x00) = 0x5fa072d1;
-    ES_REG (0x04) = 0x00000007;
-    ES_REG (0x08) = 0x05010101;
-    ES_REG (0x0c) = 0xe0e00000;
-    ES_REG (0x10) = 0x00008080;
-    ES_REG (0x14) = 0xffff7f7f;
+    /* Boot-time values (avdump13 #7-#12); the AV core sets the upper bits of
+     * +0x00 itself (0x000072d1 -> 0x5fa072d1 during the boot start) */
+    ES_REG (0x00) = 0x000072d1;
+    ES_REG (0x04) = 0x00000006;
+    ES_REG (0x08) = 0x00000101;
+    ES_REG (0x0c) = 0x00000000;
+    ES_REG (0x10) = 0x00000000;
+    ES_REG (0x14) = 0xffffffff;
     printf ("video block +0: %08x (es desc bits %d)\n", ES_REG (0x00), (ES_REG (0x00) >> 12) & 7);
     /* Global register of the ES block: stock 3 while playing (bit 0 video
      * channel +0x100, bit 1 audio +0x200?); 0 in our runs 1-7, where the
@@ -403,15 +407,33 @@ int main (int argc, char *argv[]) {
     ipc_send (0x0d0413, sync, VDEC_HEAP, 0, 1);
     ipc_send (0x0f0413, 0, VDEC_HEAP, 0, 1);
     ipc_send (0x280413, 3, 0, 0, 0);
-    /* Data in the ring before the start: the AV core's start path only sets
-     * up the ES ring / decoder (ves_addr, video_dec_init) when its input
-     * status says data is there (0x40000000); an empty ring defers the start
-     * (vdectest runs 1-3: 'error init' fallback, garbage decode). Whole
-     * frames, each with its descriptor (see feed_au). */
-    while (pos < len && es_used () < ES_SIZE / 2) {
-        pos = feed_au (src, len, pos);
+
+    /* Play-time values, written by the stock player right before its start
+     * (avdump13 #21 -> #22), rings emptied; +0x00 keeps what the AV core
+     * made of it, only bits 12-14 (es desc) must be 7 */
+    ES_REG (0x00) |= 0x7000;
+    ES_REG (0x04) = 0x00000007;
+    ES_REG (0x08) = 0x05010101;
+    ES_REG (0x0c) = 0xe0e00000;
+    ES_REG (0x10) = 0x00008080;
+    ES_REG (0x14) = 0xffff7f7f;
+    ES_REG (ES_WR) = 0;
+    ES_REG (ES_PTS_WR) = 0;
+    REG32 (0xbf260000) = g0;
+    show_block ("play cfg");
+
+    /* pre=1: data in the ring before the start (runs 4-9). The stock player
+     * starts with an EMPTY ring and feeds only after the resume (avdump13:
+     * all pointers 0 from the start to the resume); the full start setup
+     * (state 2) came from the boot start/stop cycle working once the table
+     * was right, not from prefilling. With data present the decoder may parse
+     * before 0x300413 has told it where the ring is. */
+    if (prefill) {
+        while (pos < len && es_used () < ES_SIZE / 2) {
+            pos = feed_au (src, len, pos);
+        }
+        printf ("prefilled %d frames, %d KB\n", au_count, es_used () / 1024);
     }
-    printf ("prefilled %d frames, %d KB\n", au_count, es_used () / 1024);
     ipc_send (0x010413, 1, 2, 0, 1);            /* start: format 1 = H.264 */
     ipc_send (0x310413, 0, 2, 0, 1);
     ipc_send (0x030413, 0, 2, 0, 1);            /* pause */
