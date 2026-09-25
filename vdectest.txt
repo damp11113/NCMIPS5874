@@ -20,4 +20,4 @@ setenv a 0x80008000
 fatload usb 0 ${a} vdectest.bin
 echo '### loading test.h264 (about 20 s) ###'
 fatload usb 0 0x81600000 test.h264
-go ${a} 81600000 ${filesize} tbl=83e00000
+go ${a} 81600000 ${filesize} tbl=83e00000 ${vdargs}

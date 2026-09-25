@@ -310,17 +310,31 @@ static void show (const char *tag) {
             REG32 (MB_BUSY), REG32 (0xbf1280c0), REG32 (0xbf1280cc), REG32 (0xbf128184));
 }
 
+/* The whole video block (+0x00..+0x5c) and its mirror at +0x80 */
+static void show_block (const char *tag) {
+    u32 o;
+
+    for (o = 0; o < 0x60; o += 16) {
+        printf ("%s +%02x: %08x %08x %08x %08x   +%02x: %08x %08x %08x %08x\n", tag, o,
+                ES_REG (o), ES_REG (o + 4), ES_REG (o + 8), ES_REG (o + 12), o + 0x80,
+                ES_REG (o + 0x80), ES_REG (o + 0x84), ES_REG (o + 0x88), ES_REG (o + 0x8c));
+    }
+}
+
 static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
     return argc > i ? parse_hex (argv[i]) : def;
 }
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, i, t_show, status;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, i, t_show, status;
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'r' && argv[i][3] == '=') {    /* r38=<hex>: +0x38 control */
+            r38 = parse_hex (argv[i] + 4);
+            have_r38 = 1;
         } else if (argv[i][0] == 'd' && argv[i][4] == '=') {    /* desc=1: old w5/w6 */
             desc_slice = parse_hex (argv[i] + 5);
         } else if (argv[i][0] == 't' && argv[i][3] == '=') {    /* tbl=<addr>: boot setup */
@@ -349,6 +363,12 @@ int main (int argc, char *argv[]) {
     ES_REG (0x10) = 0x00008080;
     ES_REG (0x14) = 0xffff7f7f;
     printf ("video block +0: %08x (es desc bits %d)\n", ES_REG (0x00), (ES_REG (0x00) >> 12) & 7);
+    if (have_r38) {
+        /* +0x38: stock 0x3x00200c while playing, ours 0x8000000c */
+        ES_REG (ES_STATUS) = r38;
+        printf ("+0x38 <- %08x, reads %08x\n", r38, ES_REG (ES_STATUS));
+    }
+    show_block ("before");
 
     /* ES / PTS rings (the stock firmware's layout, flags 7 as seen) */
     ES_REG (ES_START) = ES_PHYS | 7;
@@ -389,6 +409,7 @@ int main (int argc, char *argv[]) {
     ipc_send (0x340413, 0, ES_SIZE, 0, 1);
     ipc_send (0x040413, 0, ES_SIZE, 0, 1);      /* resume */
     show ("started");
+    show_block ("started");
 
     /* Feed whole frames while there is room in both rings */
     t_show = ms_now ();
@@ -400,6 +421,7 @@ int main (int argc, char *argv[]) {
             t_show = ms_now ();
             printf ("fed %d frames, %d / %d KB  ", au_count, pos / 1024, len / 1024);
             show ("run");
+            show_block ("run");
         }
         ipc_poll (0);
         if (tstc ()) {
