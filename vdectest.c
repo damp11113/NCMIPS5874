@@ -19,6 +19,7 @@
 #include "uboot.h"
 
 void *memcpy (void *dst, const void *src, unsigned int n);
+void *memset (void *dst, int c, unsigned int n);
 
 /* IPC */
 #define MB_BUSY         0xbf128188
@@ -49,6 +50,23 @@ void *memcpy (void *dst, const void *src, unsigned int n);
 #define PTS_SIZE        0x00010000u
 
 static volatile u32 msg[8] __attribute__ ((aligned (32)));   /* used uncached */
+
+/*
+ * Buffers for the stock firmware's boot-time setup messages (avdump7/8):
+ * zero-filled areas the AV core uses (state, user data, header info, a
+ * 1 KB area it marks with 0xbeafdead) and a 0x1b00-byte coefficient
+ * table. The table is the stock firmware's (at 0x806ad08c when it runs
+ * from 0x80008000); vdectest.scr decompresses the stock firmware to
+ * 0x83000000 so it is read from there (tbl=836ad08c), not shipped here.
+ */
+#define TBL_SIZE        0x1b00
+static unsigned char vbuf_state[0x400] __attribute__ ((aligned (64)));  /* 0x110413 */
+static unsigned char vbuf_a[0x100] __attribute__ ((aligned (64)));      /* 0x2d0413 p1 */
+static unsigned char vbuf_usrdat[0x1100] __attribute__ ((aligned (64)));/* 0x2d0413 p2 */
+static unsigned char vbuf_hdr[0x100] __attribute__ ((aligned (64)));    /* 0x360413 p1 */
+static unsigned char vbuf_b[0x200] __attribute__ ((aligned (64)));      /* 0x360413 p2 */
+static unsigned char vbuf_log[0x400] __attribute__ ((aligned (64)));    /* 0x220413 */
+static unsigned char vbuf_tbl[TBL_SIZE] __attribute__ ((aligned (64))); /* 0x2e0413 */
 
 /* Milliseconds from CP0 Count (324000 ticks per ms): U-Boot's get_timer
  * may need interrupts, which are off during the test. Call at least every
@@ -148,6 +166,39 @@ static int ipc_send (u32 cmd, u32 p1, u32 p2, u32 p3, int wait) {
     return 0;
 }
 
+/* Zero a buffer through its uncached view and drop its cache lines, so no
+ * dirty line can later overwrite what the AV core writes there. */
+static u32 shared_buf (void *p, u32 size) {
+    u32 a;
+
+    memset ((void *) uncached (p), 0, size);
+    for (a = (u32) p & ~31u; a < (u32) p + size; a += 32) {
+        __asm__ volatile ("cache 0x11, 0(%0)" : : "r" (a) : "memory");  /* Hit_Invalidate_D */
+    }
+    __asm__ volatile ("sync" : : : "memory");
+    return uncached (p);
+}
+
+/* The stock firmware's boot-time video setup (avdump7.log #2-#10) */
+static void boot_setup (u32 tbl) {
+    u32 t = shared_buf (vbuf_tbl, TBL_SIZE);
+
+    memcpy ((void *) t, (const void *) tbl, TBL_SIZE);
+    printf ("table from %08x: %08x %08x %08x %08x\n", tbl, ((u32 *) t)[0], ((u32 *) t)[1],
+            ((u32 *) t)[2], ((u32 *) t)[3]);
+    ipc_send (0x110413, shared_buf (vbuf_state, sizeof (vbuf_state)), 2, 0, 1);
+    ipc_send (0x2d0413, shared_buf (vbuf_a, sizeof (vbuf_a)),
+              shared_buf (vbuf_usrdat, sizeof (vbuf_usrdat)), 0, 1);
+    ipc_send (0x360413, shared_buf (vbuf_hdr, sizeof (vbuf_hdr)),
+              shared_buf (vbuf_b, sizeof (vbuf_b)) & ~0x20000000u, 0, 1);   /* stock: cached view */
+    ipc_send (0x0a0413, 1, 0, 0, 1);
+    ipc_send (0x020413, 1, 0, 0, 1);
+    ipc_send (0x220413, shared_buf (vbuf_log, sizeof (vbuf_log)), 0x400, 0, 1);
+    ipc_send (0x2f0413, TBL_SIZE, 0x400, 0, 1);
+    ipc_send (0x2e0413, t, t, 0, 1);
+    ipc_send (0x100413, 13, VDEC_HEAP, 0, 1);
+}
+
 static void show (const char *tag) {
     printf ("%s: ES rd %06x wr %06x st %08x  PTS rd %04x wr %04x  mb 0c %08x 10 %08x 188 %08x "
             "c0 %08x cc %08x 184 %08x\n", tag, ES_REG (ES_RD), ES_REG (ES_WR), ES_REG (ES_STATUS),
@@ -161,16 +212,18 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, i, t_show, status;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, i, t_show, status;
     unsigned char *ring = (unsigned char *) (0xa0000000u | ES_PHYS);
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 't' && argv[i][3] == '=') {    /* tbl=<addr>: boot setup */
+            tbl = parse_hex (argv[i] + 4);
         }
     }
     if (!len) {
-        printf ("usage: go ${a} <stream addr> <length> [sync=N]  (hex, like fatload)\n");
+        printf ("usage: go ${a} <stream addr> <length> [sync=N] [tbl=<addr>]  (hex)\n");
         return 1;
     }
     __asm__ volatile ("mfc0 %0, $12" : "=r" (status));
@@ -186,6 +239,12 @@ int main (int argc, char *argv[]) {
     ES_REG (ES_PTS_END) = PTS_PHYS + PTS_SIZE - 1;
     ES_REG (ES_WR) = 0;
     ES_REG (ES_PTS_WR) = 0;
+
+    if (tbl) {
+        boot_setup (tbl);
+    } else {
+        printf ("no tbl=: boot-time setup skipped (decoder stays in state 0)\n");
+    }
 
     /* The stock player's sequence for an H.264 file */
     ipc_send (0x100413, 13, VDEC_HEAP, 0, 1);
