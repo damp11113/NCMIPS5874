@@ -4,7 +4,7 @@
 # Prints FAILED <name> for anything that does not build.
 [ -f sine256.h ] || python3 mksine.py > sine256.h
 
-for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan rtlprobe; do
+for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan rtlprobe usbspeed; do
     ./buildc.sh $p.c $p || echo "FAILED $p"
 done
 ./buildc.sh hookpatch.c hookpatch 0x82000000 || echo "FAILED hookpatch"

@@ -21,7 +21,7 @@
  *   if (ufs_opendir (&d, "NCAPPS/APPS") == 0)
  *       while (ufs_readdir (&d, &e)) ... e.name, e.is_dir, e.size
  *
- * Reads go through a 32 KB, 64-byte aligned buffer per file (whole
+ * Reads go through a 64 KB, 64-byte aligned buffer per file (whole
  * sectors, neighbouring clusters merged), so callers can use any length
  * and alignment. U-Boot's EHCI transfers block the CPU while they run:
  * ufs_ticks (CP0 Count) and ufs_bytes count the time and data.
@@ -38,7 +38,7 @@ void *memset (void *dst, int c, unsigned int n);
 #define UB_USB_STOR_GET_DEV     0x8012484c
 
 #define UFS_SECTOR              512
-#define UFS_CHUNK_SECTORS       64                      /* 32 KB per read */
+#define UFS_CHUNK_SECTORS       128                     /* 64 KB per read */
 #define UFS_CHUNK               (UFS_CHUNK_SECTORS * UFS_SECTOR)
 
 struct ufile {
@@ -101,13 +101,145 @@ static inline int ufs_stick_present (void) {
 #endif
 }
 
-/* Raw sector read through U-Boot. Returns 0 ok, -1 error. */
+/*
+ * Fast path: U-Boot's usb_stor read manages only ~1.2-1.6 MB/s (small
+ * commands, extra waits); its EHCI bulk transfers take ~0.5 ms each. So
+ * READ(10) is sent ourselves (Bulk-Only Transport: CBW, data, CSW) with
+ * U-Boot's usb_bulk_msg: up to 128 KB per command, 16 KB per transfer
+ * (fits U-Boot EHCI's 5 buffer pages at any address). usbspeed.c measured
+ * 21-26 MB/s, same data. The device is the usb_device whose devnum equals
+ * block_dev_desc_t target (+9), lun +10; bulk endpoints from its
+ * configuration descriptor. Any failure -> back to U-Boot's read for good.
+ */
+#define UFS_BOT_MAX_SECTORS 256
+#define UFS_BOT_XFER        16384
+
+static void *ufs_bot_dev;           /* 0 = use U-Boot's read */
+static u32 ufs_bot_in, ufs_bot_out, ufs_bot_lun, ufs_bot_tag = 1;
+static unsigned char ufs_bot_cbw[32] __attribute__ ((aligned (64)));
+static unsigned char ufs_bot_csw[64] __attribute__ ((aligned (64)));
+
+static void ufs_bot_init (void) {
+#ifndef UFS_NO_PORT_CHECK
+    static unsigned char desc[256] __attribute__ ((aligned (64)));
+    u32 target = *((unsigned char *) ufs_dev + 9);
+    int i;
+
+    ufs_bot_dev = 0;
+    ufs_bot_lun = *((unsigned char *) ufs_dev + 10);
+    for (i = 0; i < UB_USB_MAX_DEVICE; i++) {
+        void *dev = ub_usb_dev (i);
+        int len, p, in = 0, out = 0, is_msd = 0;
+
+        if (!dev || (u32) UB_DEV_DEVNUM (dev) != target) {
+            continue;
+        }
+        len = ub_control (dev, 6, 0x80, 0x0200, 0, desc, sizeof (desc), 1000);
+        for (p = 0; p + 2 <= len && desc[p] >= 2; p += desc[p]) {
+            if (desc[p + 1] == 4) {                                     /* interface */
+                is_msd = desc[p + 5] == 8 && desc[p + 7] == 0x50;
+            } else if (desc[p + 1] == 5 && is_msd && (desc[p + 3] & 3) == 2) {   /* bulk */
+                if (desc[p + 2] & 0x80) {
+                    in = desc[p + 2];
+                } else {
+                    out = desc[p + 2];
+                }
+            }
+        }
+        if (in && out) {
+            ufs_bot_dev = dev;
+            ufs_bot_in = in;
+            ufs_bot_out = out;
+        }
+        break;
+    }
+#endif
+}
+
+static inline void ufs_put32 (unsigned char *p, u32 v) {
+    p[0] = v;
+    p[1] = v >> 8;
+    p[2] = v >> 16;
+    p[3] = v >> 24;
+}
+
+/* One READ(10) of n <= UFS_BOT_MAX_SECTORS sectors. Returns 0, or -1. */
+static int ufs_bot_read (u32 lba, u32 n, unsigned char *dst) {
+#ifndef UFS_NO_PORT_CHECK
+    u32 len = n * UFS_SECTOR, done = 0;
+    unsigned char *c = ufs_bot_cbw, *s = ufs_bot_csw;
+    int actual;
+
+    memset (c, 0, 31);
+    ufs_put32 (c, 0x43425355);
+    ufs_put32 (c + 4, ufs_bot_tag);
+    ufs_put32 (c + 8, len);
+    c[12] = 0x80;
+    c[13] = ufs_bot_lun;
+    c[14] = 10;
+    c[15] = 0x28;
+    c[17] = lba >> 24;
+    c[18] = lba >> 16;
+    c[19] = lba >> 8;
+    c[20] = lba;
+    c[22] = n >> 8;
+    c[23] = n;
+    if (ub_bulk (ufs_bot_dev, ufs_bot_out, c, 31, &actual, 2000) < 0 || actual != 31) {
+        return -1;
+    }
+    while (done < len) {
+        u32 k = len - done < UFS_BOT_XFER ? len - done : UFS_BOT_XFER;
+
+        if (ub_bulk (ufs_bot_dev, ufs_bot_in, dst + done, k, &actual, 2000) < 0 ||
+            actual != (int) k) {
+            return -1;
+        }
+        done += k;
+    }
+    if (ub_bulk (ufs_bot_dev, ufs_bot_in, s, 13, &actual, 2000) < 0 || actual != 13 ||
+        s[0] != 0x55 || s[1] != 0x53 || s[2] != 0x42 || s[3] != 0x53 || s[12] != 0 ||
+        ufs_le32 (s + 4) != ufs_bot_tag || ufs_le32 (s + 8) != 0) {
+        return -1;
+    }
+    ufs_bot_tag++;
+    return 0;
+#else
+    (void) lba;
+    (void) n;
+    (void) dst;
+    return -1;
+#endif
+}
+
+/* Raw sector read (own READ(10), else U-Boot's). Returns 0 ok, -1 error. */
 static int ufs_sectors (u32 start, u32 count, void *buf) {
     u32 t0 = ufs_count (), got;
 
     if (ufs_lost || !ufs_stick_present ()) {
         ufs_lost = 1;
         return -1;
+    }
+    if (ufs_bot_dev) {
+        for (got = 0; got < count; ) {
+            u32 n = count - got < UFS_BOT_MAX_SECTORS ? count - got : UFS_BOT_MAX_SECTORS;
+
+            if (ufs_bot_read (start + got, n, (unsigned char *) buf + got * UFS_SECTOR) < 0) {
+                break;
+            }
+            got += n;
+        }
+        if (got == count) {
+            ufs_ticks += ufs_count () - t0;
+            ufs_bytes += got * UFS_SECTOR;
+            return 0;
+        }
+        printf ("usbfat: own USB read failed at sector %d, using U-Boot's from now on\n",
+                start + got);
+        ufs_bot_dev = 0;
+        if (!ufs_stick_present ()) {
+            ufs_lost = 1;
+            return -1;
+        }
     }
     ub_target = ufs_read_fn;
     got = ((ub_blk_read_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), start, count, buf);
@@ -191,6 +323,7 @@ static int ufs_mount (void) {
         return -1;
     }
     ufs_read_fn = *(u32 *) ((char *) ufs_dev + 96);
+    ufs_bot_init ();
 
     if (ufs_sectors (0, 1, ufs_sec) < 0 || b[510] != 0x55 || b[511] != 0xaa) {
         printf ("usbfat: cannot read sector 0\n");
@@ -237,8 +370,9 @@ static int ufs_mount (void) {
     }
     ufs_fat32 = clusters >= 65525;
     memset (ufs_dcache, 0, sizeof (ufs_dcache));
-    printf ("usbfat: FAT%d at sector %d, %d KB clusters, %s\n", ufs_fat32 ? 32 : 16, part,
-            ufs_clus_bytes / 1024, (char *) ufs_dev + 65);
+    printf ("usbfat: FAT%d at sector %d, %d KB clusters, %s, %s\n", ufs_fat32 ? 32 : 16, part,
+            ufs_clus_bytes / 1024, (char *) ufs_dev + 65,
+            ufs_bot_dev ? "fast reads" : "U-Boot reads");
     return 0;
 }
 
