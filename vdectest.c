@@ -50,8 +50,58 @@ void *memcpy (void *dst, const void *src, unsigned int n);
 
 static volatile u32 msg[8] __attribute__ ((aligned (32)));   /* used uncached */
 
+/* Milliseconds from CP0 Count (324000 ticks per ms): U-Boot's get_timer
+ * may need interrupts, which are off during the test. Call at least every
+ * 13 s (Count wraps). */
+static u32 ms_now (void) {
+    static u32 last, ticks, ms;
+    u32 c;
+
+    __asm__ volatile ("mfc0 %0, $9" : "=r" (c));
+    ticks += c - last;
+    last = c;
+    ms += ticks / 324000u;
+    ticks %= 324000u;
+    return ms;
+}
+
 static u32 uncached (const volatile void *p) {
     return ((u32) p & 0x1fffffffu) | 0xa0000000u;
+}
+
+/*
+ * Messages from the AV core (stock handler 0x801a8638): pending bits in
+ * 0xbf128188, message pointer in slot 0xbf128014 + 4n, 24 bytes like ours
+ * (+0x14 = 0xdead for a special kind). The stock firmware acknowledges with
+ * 0xbf1280c4 |= bit; 0xbf1280c8 |= bit. U-Boot has no handler for this
+ * interrupt, so the test runs with interrupts off and polls.
+ */
+static u32 in_count;
+
+static void ipc_poll (u32 ignore) {
+    u32 pend = REG32 (MB_BUSY) & ~ignore, n;
+
+    for (n = 0; n < 32; n++) {
+        u32 bit = 1u << n, p;
+
+        if (!(pend & bit)) {
+            continue;
+        }
+        p = REG32 (MB_SLOT (n));
+        if (in_count < 200) {
+            if (p >= 0x80000000u && p < 0xc0000000u && (p & 0x1fffffffu) < 0x08000000u) {
+                volatile u32 *m = (volatile u32 *) uncached ((void *) p);
+
+                printf ("  <- av slot %d @%08x: %08x %08x %08x %08x %08x %08x\n", n, p, m[0], m[1],
+                        m[2], m[3], m[4], m[5]);
+            } else {
+                printf ("  <- av slot %d, pointer %08x\n", n, p);
+            }
+        }
+        in_count++;
+        REG32 (0xbf1280c4) |= bit;
+        REG32 (0xbf1280c8) |= bit;
+    }
 }
 
 static int ipc_send (u32 cmd, u32 p1, u32 p2, u32 p3, int wait) {
@@ -75,22 +125,26 @@ static int ipc_send (u32 cmd, u32 p1, u32 p2, u32 p3, int wait) {
     m[3] = p3;
     m[4] = 1000;
     m[5] = ID_VDEC;
+    printf ("ipc: -> slot %d cmd %08x p %08x %08x %08x%s\n", n, cmd, p1, p2, p3,
+            wait ? "" : " (no wait)");
     if (!(REG32 (MB_MASK) & bit)) {
         REG32 (MB_ENABLE) |= bit;
     }
     REG32 (MB_SLOT (n)) = uncached (msg);
     REG32 (MB_RING) |= bit;
-    printf ("ipc: slot %d cmd %08x p %08x %08x %08x%s\n", n, cmd, p1, p2, p3, wait ? "" : " (no wait)");
     if (!wait) {
         return 0;
     }
-    t0 = get_timer (0);
+    t0 = ms_now ();
     while (REG32 (MB_BUSY) & bit) {
-        if (get_timer (t0) > 1000) {
+        ipc_poll (bit);
+        if ((ms_now () - t0) > 1000) {
             printf ("ipc: TIMEOUT cmd %08x (busy %08x)\n", cmd, REG32 (MB_BUSY));
             return -2;
         }
     }
+    printf ("ipc:    done in %d ms, busy %08x\n", (int) (ms_now () - t0), REG32 (MB_BUSY));
+    ipc_poll (0);
     return 0;
 }
 
@@ -107,7 +161,7 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, i, t_show;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, i, t_show, status;
     unsigned char *ring = (unsigned char *) (0xa0000000u | ES_PHYS);
 
     for (i = 3; i < (u32) argc; i++) {
@@ -119,6 +173,8 @@ int main (int argc, char *argv[]) {
         printf ("usage: go ${a} <stream addr> <length> [sync=N]  (hex, like fatload)\n");
         return 1;
     }
+    __asm__ volatile ("mfc0 %0, $12" : "=r" (status));
+    __asm__ volatile ("mtc0 %0, $12\n\tehb" : : "r" (status & ~1u));      /* IE off, see ipc_poll */
     printf ("vdectest: stream %08x, %d bytes, starts %02x %02x %02x %02x %02x\n", (u32) src, len,
             src[0], src[1], src[2], src[3], src[4]);
     show ("before");
@@ -157,7 +213,7 @@ int main (int argc, char *argv[]) {
     show ("started");
 
     /* Feed: keep the ring topped up; wr is an offset into the ring */
-    t_show = get_timer (0);
+    t_show = ms_now ();
     for (;;) {
         u32 rd = ES_REG (ES_RD) % ES_SIZE, wr = ES_REG (ES_WR) % ES_SIZE;
         u32 used = (wr + ES_SIZE - rd) % ES_SIZE, space = ES_SIZE - used - 4096;
@@ -174,11 +230,12 @@ int main (int argc, char *argv[]) {
             pos += n;
             ES_REG (ES_WR) = (wr + n) % ES_SIZE;
         }
-        if (get_timer (t_show) >= 1000) {
-            t_show = get_timer (0);
+        if ((ms_now () - t_show) >= 1000) {
+            t_show = ms_now ();
             printf ("fed %d / %d KB  ", pos / 1024, len / 1024);
             show ("run");
         }
+        ipc_poll (0);
         if (tstc ()) {
             getc ();
             break;
@@ -186,5 +243,7 @@ int main (int argc, char *argv[]) {
     }
     ipc_send (0x020413, 1, ES_SIZE, 0, 1);      /* stop */
     show ("stopped");
+    printf ("%d messages from the AV core\n", in_count);
+    __asm__ volatile ("mtc0 %0, $12\n\tehb" : : "r" (status));
     return 0;
 }
