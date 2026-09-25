@@ -9,7 +9,7 @@
  *   fatload usb 0 82000000 rtl8188fufw.bin     (last: ${filesize} = fw size)
  *   usb port 1
  *   usb reset
- *   go ${a} 82000000 ${filesize} 83d00000 [host [path]]
+ *   go ${a} 82000000 ${filesize} 83d00000 [host [path]] [dbg]
  *                                          (default example.com /)
  */
 #include "wlan.h"
@@ -50,15 +50,16 @@ static void page_data (const unsigned char *d, u32 len) {
 }
 
 int main (int argc, char *argv[]) {
-    const char *host = argc > 4 ? argv[4] : "example.com";
-    const char *path = argc > 5 ? argv[5] : "/";
+    const char *host = argc > 4 && memcmp (argv[4], "dbg", 3) ? argv[4] : "example.com";
+    const char *path = argc > 5 && argv[5][0] == '/' ? argv[5] : "/";
     static char req[640];
     u32 ip, t0, ms, n;
 
     if (argc < 4) {
-        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [host [path]]\n");
+        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [host [path]] [dbg]\n");
         return 1;
     }
+    net_debug = !memcmp (argv[argc - 1], "dbg", 3);     /* print every TCP segment */
     if (wlan_join ((const unsigned char *) parse_hex (argv[1]), parse_hex (argv[2]),
                    (const char *) parse_hex (argv[3])) < 0) {
         return 1;
@@ -81,7 +82,6 @@ int main (int argc, char *argv[]) {
     print_ip ("", ip);
     printf (" (%d ms)\n", (int) get_timer (t0));
 
-    net_debug = 1;                                  /* every TCP segment (debugging) */
     t0 = get_timer (0);
     if (tcp_connect (ip, 80, page_data) < 0) {
         printf ("TCP: no connection to port 80\n");
@@ -99,13 +99,13 @@ int main (int argc, char *argv[]) {
         n = e - req;
     }
     t0 = get_timer (0);
+    printf ("----- response -----\n");         /* it can arrive during tcp_write */
     if (tcp_write ((const unsigned char *) req, n) < 0) {
         printf ("TCP: request not acknowledged (%d bytes). WiFi: frames %d, data rx %d / tx %d, "
                 "not decrypted %d, biggest data frame %d, IP rx %d\n", n, wlan_rx_frames,
                 wlan_rx_data, wlan_tx_data, wlan_rx_undecrypted, wlan_rx_max, net_ip_rx);
         return 1;
     }
-    printf ("----- response -----\n");
     tcp_read_all (5000);
     ms = get_timer (t0);
     printf ("\n----- end -----\n%d bytes in %d ms (%d KB/s), %d out-of-order segments%s\n",
