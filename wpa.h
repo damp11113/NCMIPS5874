@@ -268,6 +268,7 @@ static void aes128_key (const unsigned char *key, unsigned char *rk) {
     }
 }
 
+__attribute__ ((unused))
 static void aes128_encrypt (const unsigned char *rk, unsigned char *b) {
     unsigned char t[16];
     int r, i, c;
