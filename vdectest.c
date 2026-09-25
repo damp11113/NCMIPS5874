@@ -56,8 +56,10 @@ static volatile u32 msg[8] __attribute__ ((aligned (32)));   /* used uncached */
  * zero-filled areas the AV core uses (state, user data, header info, a
  * 1 KB area it marks with 0xbeafdead) and a 0x1b00-byte coefficient
  * table. The table is the stock firmware's (at 0x806ad08c when it runs
- * from 0x80008000); vdectest.scr decompresses the stock firmware to
- * 0x83000000 so it is read from there (tbl=836ad08c), not shipped here.
+ * from 0x80008000); vdectest.scr decompresses the stock firmware (loadimg
+ * always writes it to 0x80008000) and copies the table to 0x83e00000
+ * before loading vdectest over it (tbl=83e00000), so it is not shipped
+ * here.
  */
 #define TBL_SIZE        0x1b00
 static unsigned char vbuf_state[0x400] __attribute__ ((aligned (64)));  /* 0x110413 */
@@ -197,6 +199,11 @@ static void boot_setup (u32 tbl) {
     ipc_send (0x2f0413, TBL_SIZE, 0x400, 0, 1);
     ipc_send (0x2e0413, t, t, 0, 1);
     ipc_send (0x100413, 13, VDEC_HEAP, 0, 1);
+    /* The stock boot starts the decoder once (format 4, its boot video) and
+     * stops it: 'video state' 2 afterwards, and only a start from that
+     * state sets up the ES ring / DPB (vdectest run 1 and 2: state 0). */
+    ipc_send (0x010413, 4, 2, 0, 1);
+    ipc_send (0x020413, 1, 2, 0, 1);
 }
 
 static void show (const char *tag) {
