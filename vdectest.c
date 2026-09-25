@@ -343,6 +343,20 @@ static u32 feed_au (const unsigned char *s, u32 len, u32 pos) {
     return end;
 }
 
+/* All four ring positions to 0 (the stock player does, avdump13 #22) and
+ * no descriptors left in memory: the ES block registers survive the box
+ * reset, and runs 10-12 decoded the previous run's descriptors from the old
+ * PTS rd (0x5180 / 0x51a0) on. */
+static void rings_reset (void) {
+    memset ((void *) (0xa0000000u | PTS_PHYS), 0, PTS_SIZE);
+    ES_REG (ES_PTS_RD) = 0;
+    ES_REG (ES_RD) = 0;
+    ES_REG (ES_PTS_WR) = 0;
+    ES_REG (ES_WR) = 0;
+    printf ("rings reset: PTS rd %x wr %x, ES rd %x wr %x\n", ES_REG (ES_PTS_RD),
+            ES_REG (ES_PTS_WR), ES_REG (ES_RD), ES_REG (ES_WR));
+}
+
 static void show (const char *tag) {
     printf ("%s: ES rd %06x wr %06x st %08x  PTS rd %04x wr %04x  mb 0c %08x 10 %08x 188 %08x "
             "c0 %08x cc %08x 184 %08x\n", tag, ES_REG (ES_RD), ES_REG (ES_WR), ES_REG (ES_STATUS),
@@ -436,8 +450,7 @@ int main (int argc, char *argv[]) {
     ES_REG (ES_END) = ES_PHYS + ES_SIZE - 1;
     ES_REG (ES_PTS_START) = PTS_PHYS;
     ES_REG (ES_PTS_END) = PTS_PHYS + PTS_SIZE - 1;
-    ES_REG (ES_WR) = 0;
-    ES_REG (ES_PTS_WR) = 0;
+    rings_reset ();
 
     if (tbl) {
         boot_setup (tbl);
@@ -461,8 +474,7 @@ int main (int argc, char *argv[]) {
     ES_REG (0x0c) = 0xe0e00000;
     ES_REG (0x10) = 0x00008080;
     ES_REG (0x14) = 0xffff7f7f;
-    ES_REG (ES_WR) = 0;
-    ES_REG (ES_PTS_WR) = 0;
+    rings_reset ();
     /* The stock channel init (main fw 0x8023d180..) also writes +0x38..+0x58;
      * after it (avdump13 #22) +0x50 = 0070b1bd and +0x5c = 30c1 (stock sets
      * +0x5c at boot, #7), ours stayed 00300000 / 00000101 */
