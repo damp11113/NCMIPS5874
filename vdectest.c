@@ -372,11 +372,13 @@ static u32 arg_hex (int argc, char *argv[], int i, u32 def) {
 
 int main (int argc, char *argv[]) {
     const unsigned char *src = (const unsigned char *) arg_hex (argc, argv, 1, 0x81600000);
-    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, g0 = 3, prefill = 0, i, t_show, status;
+    u32 len = arg_hex (argc, argv, 2, 0), pos = 0, sync = 3, tbl = 0, r38 = 0, have_r38 = 0, g0 = 3, prefill = 0, no5x = 0, i, t_show, status;
 
     for (i = 3; i < (u32) argc; i++) {
         if (argv[i][0] == 's' && argv[i][4] == '=') {       /* sync=N */
             sync = parse_hex (argv[i] + 5);
+        } else if (argv[i][0] == 'n' && argv[i][4] == '=') {    /* no5x=1: skip +0x50/+0x5c */
+            no5x = parse_hex (argv[i] + 5);
         } else if (argv[i][0] == 'h' && argv[i][2] == '=') {    /* hw=1: no descriptors */
             hw_desc = parse_hex (argv[i] + 3);
         } else if (argv[i][0] == 'p' && argv[i][3] == '=') {    /* pre=1: prefill */
@@ -461,6 +463,13 @@ int main (int argc, char *argv[]) {
     ES_REG (0x14) = 0xffff7f7f;
     ES_REG (ES_WR) = 0;
     ES_REG (ES_PTS_WR) = 0;
+    /* The stock channel init (main fw 0x8023d180..) also writes +0x38..+0x58;
+     * after it (avdump13 #22) +0x50 = 0070b1bd and +0x5c = 30c1 (stock sets
+     * +0x5c at boot, #7), ours stayed 00300000 / 00000101 */
+    if (!no5x) {
+        ES_REG (0x50) = 0x0070b1bd;
+        ES_REG (0x5c) = 0x000030c1;
+    }
     REG32 (0xbf260000) = g0;
     show_block ("play cfg");
 
