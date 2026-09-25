@@ -8,6 +8,7 @@ for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan
     ./buildc.sh $p.c $p || echo "FAILED $p"
 done
 ./buildc.sh hookpatch.c hookpatch 0x82000000 || echo "FAILED hookpatch"
+./buildc.sh fwpatch.c fwpatch 0x82000000 || echo "FAILED fwpatch"
 ./buildhook.sh hook_irsnap.c hook_irsnap || echo "FAILED hook_irsnap"
 ./buildhook.sh hook_audsnap.c hook_audsnap hook_entry_irkey.S || echo "FAILED hook_audsnap"
 if [ -f helix/mp3/mp3dec.c ]; then

@@ -24,4 +24,5 @@ usb start
 if test "${ncstock}" = 0 && fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '### starting NCAPPS launcher ###'; go 0x80800000; fi
 echo '### no NCAPPS (or launcher exited): booting stock firmware ###'
 loadimg 1 lzma 0x300000 0x81500000 0x80008000
+if fatload usb 0 0x82000000 /NCAPPS/FWPATCH.BIN; then go 0x82000000; fi
 go 0x80008000
