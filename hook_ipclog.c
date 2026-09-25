@@ -23,7 +23,6 @@ static u32 seq = 1;                 /* in .data: hook .bss is never cleared */
  * at message HIST_AT: the boot-time messages come before serial logging
  * is usually running. */
 #define HIST_MAX    64
-#define HIST_AT     40
 static u32 hist[HIST_MAX][6] = { { 1 } };       /* initialised: stays in .data */
 static u32 hist_done = 0x55;                    /* 0x55 = not printed yet */
 
@@ -52,7 +51,7 @@ void hook_main (u32 id, const u32 *msg, u32 ack) {
     }
     FW_PRINT_EN = 1;
     FW_UART_MUTE = 0;
-    if (seq >= HIST_AT && hist_done == 0x55) {
+    if ((msg[0] & 0x7fffffffu) == 0x10413 && hist_done == 0x55) {
         hist_done = 1;
         pf ("=== IPC HISTORY #1..#%d ===\n", seq - 1);
         for (i = 0; i < seq - 1 && i < HIST_MAX; i++) {
