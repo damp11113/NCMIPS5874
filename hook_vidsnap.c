@@ -104,6 +104,25 @@ void hook_main (u32 user, u32 key) {
                 pf ("D %05x: %08x %08x %08x %08x\n", (from + i * 4) % size, REG32 (a),
                     REG32 (a + 4), REG32 (a + 8), REG32 (a + 12));
             }
+            /* What the stock player puts at each frame: 16 bytes at the
+             * descriptors' w1 and w5 addresses (start code? length?) */
+            for (i = 0; i < 32; i += 8) {
+                u32 a = 0xa0000000u | (ps + (from + i * 4) % size), k, w;
+
+                for (w = 1; w <= 5; w += 4) {
+                    u32 p = REG32 (a + w * 4);
+                    volatile unsigned char *b = (volatile unsigned char *) (0xa0000000u | p);
+
+                    if (p < 0x01000000u || p >= 0x08000000u) {
+                        continue;
+                    }
+                    pf ("F w%d %08x:", w, p);
+                    for (k = 0; k < 16; k++) {
+                        pf (" %02x", b[k]);
+                    }
+                    pf ("\n");
+                }
+            }
         }
         if (es && es < 0x08000000u) {
             u32 a = 0xa0000000u | ((es + er) & ~15u);
