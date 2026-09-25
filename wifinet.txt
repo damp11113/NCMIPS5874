@@ -1,0 +1,10 @@
+echo '### wifinet: WiFi join + keys + DHCP (ncwifi) + ping, internal RTL8188FTV ###'
+setenv a 0x80008000
+usb start
+fatload usb 0 ${a} rtlnet.bin
+mw.b 83d00000 0 400
+fatload usb 0 83d00000 WIFI.TXT
+fatload usb 0 82000000 rtl8188fufw.bin
+usb port 1
+usb reset
+go ${a} 82000000 ${filesize} 83d00000 ${netargs}
