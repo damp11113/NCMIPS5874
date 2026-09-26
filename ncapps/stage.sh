@@ -28,7 +28,7 @@ put () {                            # put <source> <destination>
 [ -d "$DST" ] || { echo "no $DST (stick not in the PC?)" >&2; exit 1; }
 
 put "$ROOT/launcher/LAUNCHER.BIN" "$NC/LAUNCHER.BIN"
-put "$ROOT/fwpatch.bin" "$NC/FWPATCH.BIN"
+put "$ROOT/iptv/hooks/fwpatch.bin" "$NC/FWPATCH.BIN"
 [ -f "$NC/LAUNCHER.INI" ] || put "$ROOT/ncapps/LAUNCHER.INI" "$NC/LAUNCHER.INI"
 # Settings: written on the box (launcher overwrites the one sector in place,
 # must stay exactly 512 bytes), so only created when missing or broken
@@ -56,6 +56,6 @@ put "$ROOT/apps/music/MUSIC.BIN" "$NC/APPS/MUSIC/APP.BIN"
 put "$ROOT/apps/midi/MIDI.BIN" "$NC/APPS/MIDI/APP.BIN"
 # Optional, not in git: your own media / SoundFonts (see ncapps/local.sh.example)
 [ -f "$ROOT/ncapps/local.sh" ] && . "$ROOT/ncapps/local.sh"
-put "$ROOT/ncboot.scr" "$DST/ncboot.scr"
-put "$ROOT/ncbig.scr" "$DST/ncbig.scr"
+put "$ROOT/iptv/scripts/ncboot.scr" "$DST/ncboot.scr"
+put "$ROOT/iptv/scripts/ncbig.scr" "$DST/ncbig.scr"
 echo "NCAPPS staged on $DST"

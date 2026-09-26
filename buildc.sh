@@ -11,7 +11,7 @@ OUT=${2:-app}
 LOAD=${3:-0x80008000}
 CROSS=mipsel-linux-gnu-
 
-${CROSS}gcc -march=mips32r2 -EL -Os -ffreestanding -fno-builtin -nostdlib $EXTRA_CFLAGS \
+${CROSS}gcc -march=mips32r2 -EL -Os -ffreestanding -fno-builtin -nostdlib -I. $EXTRA_CFLAGS \
     -mno-abicalls -fno-pic -G 0 -Wall -ffunction-sections -fdata-sections -Wl,--gc-sections -static -no-pie \
     -Wl,--no-warn-rwx-segments -Wl,--build-id=none \
     -Wl,--require-defined=_start -Wl,--defsym=LOAD_ADDR=$LOAD \

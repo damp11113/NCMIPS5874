@@ -1,0 +1,6 @@
+menu - key 0x45 (pressed) key 0x05 (release)
+ok - key 0x6d (pressed) key 0x2d (release)
+vol- - key 0x55 (pressed) key 0x15 (release)
+vol+ - key 0x5d (pressed) key 0x1d (release)
+ch- - key 0x65 (pressed) key 0x25 (release)
+ch+ - key 0x75 (pressed) key 0x35 (release)

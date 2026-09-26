@@ -1,5 +1,5 @@
 #!/bin/sh
-# Disassemble a MIPS16 region of app_ram.bin: ./m16dis.sh <start-hex> <end-hex>
+# Disassemble a MIPS16 region of iptv/firmware/app_ram.bin: ./m16dis.sh <start-hex> <end-hex>
 # (objdump only decodes MIPS16 when a mips16 function symbol covers the bytes)
 S=$((($1) & ~15)); E=$(($2)); OFF=$((S - 0x80008000)); LEN=$((E - S))
 T=${TMPDIR:-/tmp}/m16$$
@@ -10,7 +10,7 @@ cat > $T.S <<EOS
 .ent f
 f:
 .insn
-.incbin "app_ram.bin", $OFF, $LEN
+.incbin "iptv/firmware/app_ram.bin", $OFF, $LEN
 .end f
 EOS
 printf 'SECTIONS { . = 0x%x; .text : { *(.text) } /DISCARD/ : { *(.reginfo) *(.MIPS.abiflags) *(.pdr) } }\n' $S > $T.ld

@@ -1,15 +1,15 @@
 /*
  * Use U-Boot's own USB stack from our programs (after 'usb start').
  *
- * Functions found in uboot_part.bin (link addresses; runtime address =
- * link + gd->reloc_off, gd in $k0, reloc_off at gd + 0x14):
- *   usb_get_dev_index (i)                                   0x80122a78
+ * Functions (addresses per U-Boot build in ubaddr.h):
+ *   usb_get_dev_index (i)
  *       returns &usb_dev[i] (struct 1352 bytes) or NULL if unused
- *   usb_bulk_msg (dev, pipe, data, len, &actual, timeout_ms) 0x80122cb4
+ *   usb_bulk_msg (dev, pipe, data, len, &actual, timeout_ms)
  *       returns 0 ok / -1; actual = bytes moved
  *   usb_control_msg (dev, pipe, request, type, value, index,
- *                    data, size, timeout_ms)                0x80122d50
+ *                    data, size, timeout_ms)
  *       returns bytes moved / -1
+ * On an unknown U-Boot build every call fails (NULL / -1).
  * EHCI transfers are synchronous: a bulk IN with no data blocks until
  * EHCI's own timeout (~5 s, prints "EHCI timed out on TD"). Use it
  * request/response style only.
@@ -26,10 +26,8 @@
 #define UBUSB_H
 
 #include "uboot.h"
+#include "ubaddr.h"
 
-#define UB_USB_GET_DEV_INDEX    0x80122a78
-#define UB_USB_BULK_MSG         0x80122cb4
-#define UB_USB_CONTROL_MSG      0x80122d50
 #define UB_USB_MAX_DEVICE       32
 
 /* Pipe = type << 30 | speed << 26 | ep << 15 | devnum << 8 | dir | mps */
@@ -59,20 +57,18 @@ __asm__ (
     "    nop\n"
     ".set pop\n");
 
-static inline u32 ub_reloc_off (void) {
-    u32 gd;
-
-    __asm__ volatile ("move %0, $26" : "=r" (gd));
-    return REG32 (gd + 0x14);
-}
-
 typedef void *(*ub_get_dev_t) (int index);
 typedef int (*ub_bulk_t) (void *dev, u32 pipe, void *data, int len, int *actual, int timeout);
 typedef int (*ub_control_t) (void *dev, u32 pipe, u32 request, u32 type, u32 value,
                              u32 index, void *data, u32 size, int timeout);
 
 static inline void *ub_usb_dev (int index) {
-    ub_target = UB_USB_GET_DEV_INDEX + ub_reloc_off ();
+    const struct ub_build *b = ub_build ();
+
+    if (!b) {
+        return 0;
+    }
+    ub_target = b->usb_get_dev_index + ub_reloc_off ();
     return ((ub_get_dev_t) (void *) ub_thunk) (index);
 }
 
@@ -82,7 +78,12 @@ static inline u32 ub_pipe (void *dev, u32 type, u32 ep) {
 }
 
 static inline int ub_bulk (void *dev, u32 ep, void *data, int len, int *actual, int timeout) {
-    ub_target = UB_USB_BULK_MSG + ub_reloc_off ();
+    const struct ub_build *b = ub_build ();
+
+    if (!b) {
+        return -1;
+    }
+    ub_target = b->usb_bulk_msg + ub_reloc_off ();
     return ((ub_bulk_t) (void *) ub_thunk) (dev, ub_pipe (dev, UB_PIPE_BULK, ep), data, len,
                                    actual, timeout);
 }
@@ -90,7 +91,12 @@ static inline int ub_bulk (void *dev, u32 ep, void *data, int len, int *actual, 
 /* Control transfer on endpoint 0; type bit 7 (0x80) = device to host */
 static inline int ub_control (void *dev, u32 request, u32 type, u32 value, u32 index,
                               void *data, u32 size, int timeout) {
-    ub_target = UB_USB_CONTROL_MSG + ub_reloc_off ();
+    const struct ub_build *b = ub_build ();
+
+    if (!b) {
+        return -1;
+    }
+    ub_target = b->usb_control_msg + ub_reloc_off ();
     return ((ub_control_t) (void *) ub_thunk) (dev, ub_pipe (dev, UB_PIPE_CONTROL, type & UB_DIR_IN),
                                       request, type, value, index, data, size, timeout);
 }

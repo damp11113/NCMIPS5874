@@ -1,5 +1,7 @@
 # Project Continuation Guide: Bare-Metal MIPS on Nationalchip SoC
 
+> **Layout change 2026-09-26:** IPTV-box-only files moved: flash dump + extracted images -> `iptv/firmware/`, logs -> `iptv/logs/`, U-Boot scripts (`ncboot.txt`, `avstart.txt`, `hook*.txt`, ...) -> `iptv/scripts/`, stock-firmware hooks + `hookpatch` / `fwpatch` / `usbfast` / `vdectest` -> `iptv/hooks/`. Paths below are the old root paths. Satellite box (M88CS8002B): `sat/`, overview in `BOXES.md`.
+
 ## 1. Project Overview & Objective
 Write, compile, and execute custom bare-metal MIPS assembly code on a Nationalchip set-top box, progressing from basic execution to serial console (UART) text output.
 

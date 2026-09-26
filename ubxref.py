@@ -1,7 +1,7 @@
 # U-Boot string xref: find code that loads a string via GOT page + addiu,
 # then list 0xbfXXXXXX addresses nearby. Usage: python3 ubxref.py "text" ...
 import struct, sys, re
-d = open('uboot_part.bin', 'rb').read()
+d = open('iptv/firmware/uboot_part.bin', 'rb').read()
 BASE = 0x800ffff0          # link address of file offset 0
 GP = 0x90ae0               # gp as file offset (GOT start 0x88af0 + 0x7ff0)
 N = len(d) // 4

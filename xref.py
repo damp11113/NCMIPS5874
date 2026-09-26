@@ -1,6 +1,6 @@
 # Find code that references a string, then list MMIO addresses near that code.
 import struct, sys, re
-d = open('app_ram.bin', 'rb').read()
+d = open('iptv/firmware/app_ram.bin', 'rb').read()
 BASE = 0x80008000
 N = len(d) // 4
 W = struct.unpack_from('<%dI' % N, d)

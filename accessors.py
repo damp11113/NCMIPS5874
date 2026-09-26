@@ -3,7 +3,7 @@
 #   lui v0,0xbfXX ; ori v0,v0,OFF ; ... lw v0,0(v0) ; ext v0,v0,POS,SIZE  (getter)
 # Prints function address, GOT offset(s) that point to it, register, bit field.
 import struct, sys, collections
-d = open('uboot_part.bin', 'rb').read()
+d = open('iptv/firmware/uboot_part.bin', 'rb').read()
 BASE, GP = 0x800ffff0, 0x90ae0
 N = len(d) // 4
 W = struct.unpack_from('<%dI' % N, d)

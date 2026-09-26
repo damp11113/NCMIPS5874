@@ -75,3 +75,7 @@ ncapps/local.sh
 VDECTBL.BIN
 WIFI.TXT
 vk.dis
+
+# Satellite box: vendor firmware strings / disassembly
+sat/*_strings.txt
+*.dis

@@ -18,7 +18,6 @@
 int memcmp (const void *a, const void *b, unsigned int n);
 void *memset (void *dst, int c, unsigned int n);
 
-#define UB_USB_STOR_GET_DEV     0x8012484c
 #define TEST_LBA                200000u         /* somewhere in the data area */
 #define TEST_BYTES              (2u << 20)      /* 2 MB per test */
 #define TICKS_PER_MS            324000u
@@ -152,7 +151,12 @@ int main (int argc, char *argv[]) {
 
     (void) argc;
     (void) argv;
-    ub_target = UB_USB_STOR_GET_DEV + ub_reloc_off ();
+    if (!ub_build ()) {
+        printf ("unknown U-Boot build (addresses in ubaddr.h)\n");
+        return 1;
+    }
+    printf ("U-Boot build: %s\n", ub_build ()->name);
+    ub_target = ub_build ()->usb_stor_get_dev + ub_reloc_off ();
     stor_desc = ((ub_get_dev_t) (void *) ub_thunk) (0);
     if (!stor_desc || *((unsigned char *) stor_desc + 11) == 0xff) {
         printf ("no USB storage (run usb start)\n");

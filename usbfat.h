@@ -4,7 +4,7 @@
  *
  * U-Boot 2012.04 can only fatload a whole file, so this is a small
  * read-only FAT16/FAT32 reader on top of U-Boot's raw sector read:
- *   usb_stor_get_dev (index)  link 0x8012484c, returns &usb_dev_desc[index]
+ *   usb_stor_get_dev (index)  returns &usb_dev_desc[index] (address per build: ubaddr.h)
  *   block_dev_desc_t (112 B, no LBA48): dev +4, type +11 (0xff = none),
  *   lba +16, blksz +20, vendor +24, product +65,
  *   block_read (dev, start, blkcnt, buffer) +96 (runtime address, set by
@@ -34,8 +34,6 @@
 int memcmp (const void *a, const void *b, unsigned int n);   /* libc.c */
 void *memcpy (void *dst, const void *src, unsigned int n);
 void *memset (void *dst, int c, unsigned int n);
-
-#define UB_USB_STOR_GET_DEV     0x8012484c
 
 #define UFS_SECTOR              512
 #define UFS_CHUNK_SECTORS       128                     /* 64 KB per read */
@@ -282,18 +280,22 @@ static inline u32 ufs_clus_sector (u32 c) {
 
 /*
  * U-Boot's EHCI driver waits 10 s for a bulk transfer (5 s for others)
- * before giving up (ehci_submit_async, link 0x80159c7c: li s0,10000 /
+ * before giving up (ehci_submit_async, ub_build ()->ehci_tmo: li s0,10000 /
  * li a0,5000; movn picks 5000 for non-bulk pipes). A stick pulled out in
  * the middle of a read therefore froze the box for 10 s per try. A 32 KB
  * read takes < 0.1 s, so the constants are patched in U-Boot's code in RAM
  * to 1.5 s / 1 s, only if the instructions are the expected ones.
  */
-#define UFS_EHCI_TMO_LINK   0x80159c7cu
-
 static void ufs_patch_ehci_timeouts (void) {
 #ifndef UFS_NO_PORT_CHECK
-    volatile u32 *p = (volatile u32 *) (UFS_EHCI_TMO_LINK + ub_reloc_off ());
+    const struct ub_build *bd = ub_build ();
+    volatile u32 *p;
     u32 a;
+
+    if (!bd) {
+        return;
+    }
+    p = (volatile u32 *) (bd->ehci_tmo + ub_reloc_off ());
 
     if (p[0] == 0x24102710u && p[1] == 0x24041388u) {     /* li s0,10000; li a0,5000 */
         p[0] = 0x24100000u | 1500;
@@ -311,8 +313,12 @@ static int ufs_mount (void) {
     u32 part = 0, rsvd, nfats, rootents, fatsz, totsec, clusters, i;
     const unsigned char *b = ufs_sec;
 
+    if (!ub_build ()) {
+        printf ("usbfat: unknown U-Boot build (addresses in ubaddr.h)\n");
+        return -1;
+    }
     ufs_patch_ehci_timeouts ();
-    ub_target = UB_USB_STOR_GET_DEV + ub_reloc_off ();
+    ub_target = ub_build ()->usb_stor_get_dev + ub_reloc_off ();
     ufs_dev = ((ub_get_dev_t) (void *) ub_thunk) (0);
     if (!ufs_dev || *((unsigned char *) ufs_dev + 11) == 0xff) {
         printf ("usbfat: no USB storage device (run 'usb start' first)\n");

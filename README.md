@@ -185,11 +185,12 @@ addresses) in `continue.md`.
 | `osdsetup.h`, `osd.h`, `font8x16.h` | OSD from plain U-Boot + tiny C drawing lib |
 | `tvapp.c`, `osdinit.c`, `main.c`, `led.c`, `cpuinfo.c` | example / test programs |
 | `gfxdemo.cpp`, `gfx_glue.c`, `buildgfx.sh`, `softfp/` | libgfx on the box |
-| `avstart.txt`, `autoboot.txt`, `mkscript.py` | U-Boot scripts (`.txt` -> `.scr`) |
-| `hook*.c`, `hook_entry.S`, `hookpatch.c`, `buildhook.sh` | run code inside the stock firmware |
+| `iptv/scripts/*.txt`, `mkscript.py` | U-Boot scripts (`.txt` -> `.scr`) |
+| `iptv/hooks/` (`hook*.c`, `hookpatch.c`, `fwpatch.c`, `usbfast.c`), `buildhook.sh` | run code inside the stock firmware |
 | `regwatch.c`, `regdump.c`, `snap*.c`, `regapply.c`, `vicset.c`, `vsyncprobe.c`, `irscan.c` | hardware exploration tools |
 | `xref.py`, `ubxref.py`, `accessors.py`, `diffsnap.py` | firmware / U-Boot analysis scripts |
-| `backup.bin`, `app_ram.bin`, `uboot_part.bin`, `avcpu.bin` | flash dump and extracted images |
+| `iptv/firmware/` (`backup.bin`, `app_ram.bin`, `uboot_part.bin`, `avcpu.bin`) | flash dump and extracted images |
+| `BOXES.md` | which file works on which box (IPTV / satellite) |
 | `continue.md` | full notes |
 
 ## Next ideas

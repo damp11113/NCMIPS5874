@@ -1,0 +1,70 @@
+U-boot# printenv
+addmisc=setenv bootargs ${bootargs} console=ttyS0,${baudrate} panic=1
+baudrate=38400
+bootcmd=if test $bootmedia -eq 1 || test $bootmedia -eq 4;then echo '####### Uboot Fixed Partitions #######';echo    bootinit       0x0~0x80000;echo    uboot         0x80000~0x180000;echo    boot.scr     0x180000~0x200000;echo '####################################';loadimg 0 0x180000 0x10000 0x80100000;source 0x80100000;elif test $bootmedia -eq 0;then echo '####### Uboot Fixed Partitions #######';echo    bootinit       0x0~0x10000;echo    uboot         0x10000~0xa0000;echo    boot.scr     0xa0000~0xb0000;echo '####################################';loadimg 0 0xa0000 0x10000 0x80100000;source 0x80100000;fi;
+bootdelay=0
+bootfile=/tftpboot/vmlinux
+bootmedia=0
+chipver=10
+ddrsize=128
+ethact=mt_eth
+ethaddr=00:1B:11:17:00:77
+ipaddr=192.168.1.55
+lnxlinkaddr=0x80204430
+lnxnfsbt=tftp 0x80200000 vmlinux;go ${lnxlinkaddr}
+load=tftp 80500000 ${u-boot}
+netmask=255.255.255.0
+pinmux=1
+serverip=192.168.1.1
+stderr=serial
+stdin=serial
+stdout=serial
+
+Environment size: 1069/4092 bytes
+U-boot# bdinfo
+boot_params = 0x80F5AF98
+memstart    = 0x80100000
+memsize     = 0x01400000
+flashstart  = 0xFFFFFFFF
+flashsize   = 0xFFFFFFFF
+flashoffset = 0xFFFFFFFF
+ethaddr     = 00:1B:11:17:00:77
+ip_addr     = 192.168.1.55
+baudrate    = 38400 bps
+
+U-boot# go 0x80008000
+## Starting application at 0x80008000 ...
+=== CPU identification ===
+  PRId    0x00019655: company 1 (MIPS Technologies), core 0x96 = MIPS 24KE, rev 2.5.1
+  Config0 0x80250483 Config1 0xfe63319e Config2 0x80000000 Config3 0x00002420
+  ISA: MIPS32 release 2, little endian, MMU type 1
+  kseg0 (0x80000000) caching: write-back
+  TLB entries: 64
+=== Caches ===
+  L1 I-cache: 16 KB, 4-way, 32-byte lines, 128 sets
+  L1 D-cache: 16 KB, 4-way, 32-byte lines, 128 sets
+  L2 cache  : none
+=== Features ===
+  FPU (hardware float) : no
+  MIPS16e (compact ISA): yes
+  EJTAG debug          : yes
+  Perf counters        : yes
+  DSP ASE              : yes
+  MT ASE (multithread) : no
+  Vectored interrupts  : yes
+=== Clock ===
+  Count register: 323999989 ticks/s, 1 tick = 2 CPU cycles
+  CPU clock: about 646 MHz
+=== CPU benchmarks ===
+  Branch loop : 100M instructions in 232 ms -> 430 MIPS, 1.50 cycles/instr
+  Multiply    : 40M mul in 139 ms -> 287 M mul/s  (checksum 5950420a)
+  Divide      : 2M div in 117 ms -> about 38 cycles each (checksum 15ec8e2c)
+=== Memory bandwidth (scratch RAM 0x82000000) ===
+  8 KB, cached (fits L1)    read  736 MB/s   write 1030 MB/s
+  4 MB, cached (DDR)        read  165 MB/s   write  175 MB/s
+  1 MB, uncached (DDR raw)  read   48 MB/s   write  175 MB/s
+Done.
+## Application terminated, rc = 0x0
+U-boot#
+
+
