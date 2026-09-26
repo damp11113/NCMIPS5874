@@ -64,18 +64,18 @@ static const unsigned char *vptr, *vend;
 static int from_usb;
 static struct ufile vfile, afile;
 static u32 vleft, aleft;                /* stream bytes not yet read (USB) */
-static unsigned char vbuf[VBUF_SIZE] __attribute__ ((aligned (8)));
-static unsigned char abuf[ABUF_SIZE] __attribute__ ((aligned (8)));
+static unsigned char vbuf[VBUF_SIZE] __attribute__((aligned(8)));
+static unsigned char abuf[ABUF_SIZE] __attribute__((aligned(8)));
 static u32 runs_total;
 
-static inline u32 ticks (void) {
+static inline u32 ticks(void) {
     u32 v;
 
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
-static u32 parse_dec (const char *s) {
+static u32 parse_dec(const char *s) {
     u32 v = 0;
 
     while (*s >= '0' && *s <= '9') {
@@ -84,14 +84,14 @@ static u32 parse_dec (const char *s) {
     return v;
 }
 
-static const char *after_eq (const char *s) {
+static const char *after_eq(const char *s) {
     while (*s && *s != '=') {
         s++;
     }
     return *s ? s + 1 : s;
 }
 
-static int is_hex_addr (const char *s) {
+static int is_hex_addr(const char *s) {
     for (; *s; s++) {
         if (!((*s >= '0' && *s <= '9') || (*s >= 'a' && *s <= 'f') ||
               (*s >= 'A' && *s <= 'F') || *s == 'x' || *s == 'X')) {
@@ -101,40 +101,40 @@ static int is_hex_addr (const char *s) {
     return 1;
 }
 
-static int video_refill (void) {
+static int video_refill(void) {
     u32 n;
 
     if (!from_usb || vleft == 0) {
         return 0;
     }
-    n = ufs_read (&vfile, vbuf, vleft < VBUF_SIZE ? vleft : VBUF_SIZE);
+    n = ufs_read(&vfile, vbuf, vleft < VBUF_SIZE ? vleft : VBUF_SIZE);
     vleft -= n;
     vptr = vbuf;
     vend = vbuf + n;
     return n > 0;
 }
 
-static int audio_refill (unsigned char *dst, int max) {
+static int audio_refill(unsigned char *dst, int max) {
     u32 n = (u32) max < aleft ? (u32) max : aleft;
 
-    n = ufs_read (&afile, dst, n);
+    n = ufs_read(&afile, dst, n);
     aleft -= n;
     return n;
 }
 
-static inline u32 vbyte (void) {
-    if (vptr >= vend && !video_refill ()) {
+static inline u32 vbyte(void) {
+    if (vptr >= vend && !video_refill()) {
         return 0;
     }
     return *vptr++;
 }
 
-static u32 varint (void) {
+static u32 varint(void) {
     u32 v = 0;
     int shift = 0;
 
     for (;;) {
-        u32 b = vbyte ();
+        u32 b = vbyte();
 
         v |= (b & 0x7f) << shift;
         if (!(b & 0x80) || shift > 28) {
@@ -145,7 +145,7 @@ static u32 varint (void) {
 }
 
 /* Flip pixels [pos, pos + len) and draw them as 2x2 blocks */
-static void toggle_run (u32 pos, u32 len) {
+static void toggle_run(u32 pos, u32 len) {
     u32 end = pos + len;
     int y, x;
 
@@ -173,19 +173,19 @@ static void toggle_run (u32 pos, u32 len) {
 }
 
 /* Decode the next video frame into bitmap + screen. 0 at end of stream. */
-static int next_video_frame (void) {
+static int next_video_frame(void) {
     u32 runs, i, pos = 0;
 
-    if (vptr >= vend && !video_refill ()) {
+    if (vptr >= vend && !video_refill()) {
         return 0;
     }
-    runs = varint ();
+    runs = varint();
     runs_total += runs;
     for (i = 0; i < runs; i++) {
-        u32 len = varint ();
+        u32 len = varint();
 
         if (i & 1) {
-            toggle_run (pos, len);
+            toggle_run(pos, len);
         }
         pos += len;
     }
@@ -198,7 +198,7 @@ struct stats {
     u32 t, audio, video, usb, osd, usb_bytes, shown, runs;
 };
 
-static void ovl_line (int line, const char *text, u16 fg) {
+static void ovl_line(int line, const char *text, u16 fg) {
     char buf[OVL_COLS + 1];
     int i;
 
@@ -206,23 +206,23 @@ static void ovl_line (int line, const char *text, u16 fg) {
         buf[i] = *text ? *text++ : ' ';
     }
     buf[i] = 0;
-    fb_text (&fb, OVL_X, 16 + 20 * line, buf, 1, fg, BLACK);
+    fb_text(&fb, OVL_X, 16 + 20 * line, buf, 1, fg, BLACK);
 }
 
 /* Tenths of a percent of 'part' in 'whole' (both CP0 ticks) */
-static u32 pct10 (u32 part, u32 whole) {
+static u32 pct10(u32 part, u32 whole) {
     whole >>= 10;
     return whole ? (part >> 10) * 1000 / whole : 0;
 }
 
-static void s_pct (struct str *s, u32 p10) {
-    s_num (s, p10 / 10, 1);
-    s_add (s, ".");
-    s_num (s, p10 % 10, 1);
-    s_add (s, " %");
+static void s_pct(struct str *s, u32 p10) {
+    s_num(s, p10 / 10, 1);
+    s_add(s, ".");
+    s_num(s, p10 % 10, 1);
+    s_add(s, " %");
 }
 
-static void ovl_draw (const struct stats *now, const struct stats *prev, u32 frames, u32 fps,
+static void ovl_draw(const struct stats *now, const struct stats *prev, u32 frames, u32 fps,
                       int behind, u32 lag_max) {
     u32 wall = now->t - prev->t;
     u32 ms = wall / TICKS_PER_MS;
@@ -238,106 +238,106 @@ static void ovl_draw (const struct stats *now, const struct stats *prev, u32 fra
     if (!ms) {
         return;
     }
-    ovl_line (l++, "DEBUG  (d: hide)", YELLOW);
-    ovl_line (l++, from_usb ? "SRC   USB stream" : "SRC   RAM", WHITE);
+    ovl_line(l++, "DEBUG  (d: hide)", YELLOW);
+    ovl_line(l++, from_usb ? "SRC   USB stream" : "SRC   RAM", WHITE);
 
-    s_reset (&s);
-    s_add (&s, "FRAME ");
-    s_num (&s, now->shown, 1);
-    s_add (&s, "/");
-    s_num (&s, frames, 1);
-    ovl_line (l++, s.buf, WHITE);
+    s_reset(&s);
+    s_add(&s, "FRAME ");
+    s_num(&s, now->shown, 1);
+    s_add(&s, "/");
+    s_num(&s, frames, 1);
+    ovl_line(l++, s.buf, WHITE);
 
-    s_reset (&s);
-    s_add (&s, "TIME  ");
-    s_time (&s, sec);
-    s_add (&s, "/");
-    s_time (&s, total);
-    ovl_line (l++, s.buf, WHITE);
+    s_reset(&s);
+    s_add(&s, "TIME  ");
+    s_time(&s, sec);
+    s_add(&s, "/");
+    s_time(&s, total);
+    ovl_line(l++, s.buf, WHITE);
 
-    s_reset (&s);
-    s_add (&s, "FPS   ");
-    s_num (&s, df * 1000 / ms, 1);
-    s_add (&s, ".");
-    s_num (&s, (df * 10000 / ms) % 10, 1);
-    ovl_line (l++, s.buf, WHITE);
+    s_reset(&s);
+    s_add(&s, "FPS   ");
+    s_num(&s, df * 1000 / ms, 1);
+    s_add(&s, ".");
+    s_num(&s, (df * 10000 / ms) % 10, 1);
+    ovl_line(l++, s.buf, WHITE);
 
-    s_reset (&s);
-    s_add (&s, "A/V   ");
+    s_reset(&s);
+    s_add(&s, "A/V   ");
     if (behind < 0) {
-        s_add (&s, "-");
+        s_add(&s, "-");
         behind = -behind;
     }
-    s_num (&s, behind, 1);
-    s_add (&s, " fr late");
-    ovl_line (l++, s.buf, behind > 2 ? RED : WHITE);
+    s_num(&s, behind, 1);
+    s_add(&s, " fr late");
+    ovl_line(l++, s.buf, behind > 2 ? RED : WHITE);
 
-    s_reset (&s);
-    s_add (&s, "LAG   max ");
-    s_num (&s, lag_max, 1);
-    s_add (&s, " fr");
-    ovl_line (l++, s.buf, WHITE);
+    s_reset(&s);
+    s_add(&s, "LAG   max ");
+    s_num(&s, lag_max, 1);
+    s_add(&s, " fr");
+    ovl_line(l++, s.buf, WHITE);
 
-    s_reset (&s);
-    s_add (&s, "CPU   ");
-    s_pct (&s, pct10 (busy, wall));
-    ovl_line (l++, s.buf, CYAN);
+    s_reset(&s);
+    s_add(&s, "CPU   ");
+    s_pct(&s, pct10(busy, wall));
+    ovl_line(l++, s.buf, CYAN);
 
-    s_reset (&s);
-    s_add (&s, " audio ");
-    s_pct (&s, pct10 (now->audio - prev->audio, wall));
-    ovl_line (l++, s.buf, CYAN);
+    s_reset(&s);
+    s_add(&s, " audio ");
+    s_pct(&s, pct10(now->audio - prev->audio, wall));
+    ovl_line(l++, s.buf, CYAN);
 
-    s_reset (&s);
-    s_add (&s, " video ");
-    s_pct (&s, pct10 (now->video - prev->video, wall));
-    ovl_line (l++, s.buf, CYAN);
+    s_reset(&s);
+    s_add(&s, " video ");
+    s_pct(&s, pct10(now->video - prev->video, wall));
+    ovl_line(l++, s.buf, CYAN);
 
-    s_reset (&s);
-    s_add (&s, " usb   ");
-    s_pct (&s, pct10 (now->usb - prev->usb, wall));
-    ovl_line (l++, s.buf, CYAN);
+    s_reset(&s);
+    s_add(&s, " usb   ");
+    s_pct(&s, pct10(now->usb - prev->usb, wall));
+    ovl_line(l++, s.buf, CYAN);
 
-    s_reset (&s);
-    s_add (&s, " osd   ");
-    s_pct (&s, pct10 (now->osd - prev->osd, wall));
-    ovl_line (l++, s.buf, CYAN);
+    s_reset(&s);
+    s_add(&s, " osd   ");
+    s_pct(&s, pct10(now->osd - prev->osd, wall));
+    ovl_line(l++, s.buf, CYAN);
 
-    s_reset (&s);
-    s_add (&s, "RUNS  ");
-    s_num (&s, df ? (now->runs - prev->runs) / df : 0, 1);
-    s_add (&s, "/fr");
-    ovl_line (l++, s.buf, WHITE);
+    s_reset(&s);
+    s_add(&s, "RUNS  ");
+    s_num(&s, df ? (now->runs - prev->runs) / df : 0, 1);
+    s_add(&s, "/fr");
+    ovl_line(l++, s.buf, WHITE);
 
-    s_reset (&s);
-    s_add (&s, "USB   ");
-    s_num (&s, (ub / 1024) * 1000 / ms, 1);
-    s_add (&s, " KB/s");
-    ovl_line (l++, s.buf, GREEN);
+    s_reset(&s);
+    s_add(&s, "USB   ");
+    s_num(&s, (ub / 1024) * 1000 / ms, 1);
+    s_add(&s, " KB/s");
+    ovl_line(l++, s.buf, GREEN);
 
-    s_reset (&s);
-    s_add (&s, "USBRD ");
+    s_reset(&s);
+    s_add(&s, "USBRD ");
     if (uus) {
-        s_num (&s, (ub / 1024) * 1000 / (uus / 1000 ? uus / 1000 : 1), 1);
-        s_add (&s, " KB/s");
+        s_num(&s, (ub / 1024) * 1000 / (uus / 1000 ? uus / 1000 : 1), 1);
+        s_add(&s, " KB/s");
     } else {
-        s_add (&s, "-");
+        s_add(&s, "-");
     }
-    ovl_line (l++, s.buf, GREEN);
+    ovl_line(l++, s.buf, GREEN);
 
-    s_reset (&s);
-    s_add (&s, "ABUF  ");
-    s_num (&s, ((AUD_REG (0x104) & AUD_MASK) << 3) * 100 / AUD_BUF_SIZE, 1);
-    s_add (&s, " %");
-    ovl_line (l++, s.buf, GREEN);
+    s_reset(&s);
+    s_add(&s, "ABUF  ");
+    s_num(&s, ((AUD_REG(0x104) & AUD_MASK) << 3) * 100 / AUD_BUF_SIZE, 1);
+    s_add(&s, " %");
+    ovl_line(l++, s.buf, GREEN);
 }
 
-static void ovl_clear (void) {
-    fb_rect (&fb, 0, 0, x0, fb.h, BLACK);
+static void ovl_clear(void) {
+    fb_rect(&fb, 0, 0, x0, fb.h, BLACK);
 }
 
-static void snap (struct stats *s, u32 audio, u32 video, u32 osd, u32 shown) {
-    s->t = ticks ();
+static void snap(struct stats *s, u32 audio, u32 video, u32 osd, u32 shown) {
+    s->t = ticks();
     s->audio = audio;
     s->video = video;
     s->usb = ufs_ticks;
@@ -347,7 +347,7 @@ static void snap (struct stats *s, u32 audio, u32 video, u32 osd, u32 shown) {
     s->runs = runs_total;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     const char *name = "badapple.bav";
     struct bav_header hdr;
     const struct bav_header *h = &hdr;
@@ -360,11 +360,11 @@ int main (int argc, char *argv[]) {
 
     for (i = 1; i < argc; i++) {
         if (argv[i][0] == 'v' && argv[i][1] == 'o' && argv[i][2] == 'l') {
-            vol = parse_dec (after_eq (argv[i]));
-        } else if (!strcmp (argv[i], "nodebug")) {
+            vol = parse_dec(after_eq(argv[i]));
+        } else if (!strcmp(argv[i], "nodebug")) {
             debug = 0;
-        } else if (i == 1 && is_hex_addr (argv[i])) {
-            load = parse_hex (argv[i]);
+        } else if (i == 1 && is_hex_addr(argv[i])) {
+            load = parse_hex(argv[i]);
         } else {
             name = argv[i];
         }
@@ -375,47 +375,47 @@ int main (int argc, char *argv[]) {
     mp3s_volq = vol * 256 / 100;
 
     if (load) {
-        memcpy (&hdr, (void *) load, sizeof (hdr));
+        memcpy(&hdr, (void *) load, sizeof(hdr));
     } else {
         from_usb = 1;
-        if (ufs_mount () < 0) {
+        if (ufs_mount() < 0) {
             return 1;
         }
-        if (ufs_open (&vfile, name) < 0 || ufs_open (&afile, name) < 0) {
-            printf ("badapple: %s not found in the stick's root directory\n", name);
+        if (ufs_open(&vfile, name) < 0 || ufs_open(&afile, name) < 0) {
+            printf("badapple: %s not found in the stick's root directory\n", name);
             return 1;
         }
-        if (ufs_read (&vfile, &hdr, sizeof (hdr)) != sizeof (hdr)) {
-            printf ("badapple: cannot read %s\n", name);
+        if (ufs_read(&vfile, &hdr, sizeof(hdr)) != sizeof(hdr)) {
+            printf("badapple: cannot read %s\n", name);
             return 1;
         }
-        printf ("badapple: streaming %s (%d bytes) from USB\n", name, vfile.size);
+        printf("badapple: streaming %s (%d bytes) from USB\n", name, vfile.size);
     }
 
-    if (memcmp (h->magic, "BAV1", 4) != 0) {
-        printf ("badapple: no BAV1 header (%s)\n", load ? "RAM" : name);
+    if (memcmp(h->magic, "BAV1", 4) != 0) {
+        printf("badapple: no BAV1 header (%s)\n", load ? "RAM" : name);
         return 1;
     }
     if (h->width > MAX_W || h->height > MAX_H || h->width == 0 || h->height == 0 ||
         h->fps == 0 || (load && load + h->video_off + h->video_len > BAV_MAX_END)) {
-        printf ("badapple: bad header (%dx%d, %d fps, end 0x%08x)\n", h->width, h->height,
+        printf("badapple: bad header (%dx%d, %d fps, end 0x%08x)\n", h->width, h->height,
                 h->fps, load + h->video_off + h->video_len);
         return 1;
     }
     vid_w = h->width;
     vid_h = h->height;
-    printf ("badapple: %dx%d, %d fps, %d frames (%d:%02d), video %d B, audio %d B\n",
+    printf("badapple: %dx%d, %d fps, %d frames (%d:%02d), video %d B, audio %d B\n",
             vid_w, vid_h, h->fps, h->frames, h->frames / h->fps / 60, h->frames / h->fps % 60,
             h->video_len, h->audio_len);
 
-    if (osd_setup (&fb) < 0) {
-        printf ("badapple: display not running: source avstart.scr first\n");
+    if (osd_setup(&fb) < 0) {
+        printf("badapple: display not running: source avstart.scr first\n");
         return 1;
     }
     x0 = (fb.w - 2 * vid_w) / 2;
     y0 = (fb.h - 2 * vid_h) / 2;
     if (x0 < 0 || y0 < 0) {
-        printf ("badapple: %dx%d does not fit 2x on %dx%d\n", vid_w, vid_h, fb.w, fb.h);
+        printf("badapple: %dx%d does not fit 2x on %dx%d\n", vid_w, vid_h, fb.w, fb.h);
         return 1;
     }
     x0 &= ~1;                           /* 32-bit pixel pair stores */
@@ -426,43 +426,43 @@ int main (int argc, char *argv[]) {
     if (load) {
         vptr = (const unsigned char *) load + h->video_off;
         vend = vptr + h->video_len;
-        i = mp3s_open ((unsigned char *) load + h->audio_off, h->audio_len);
+        i = mp3s_open((unsigned char *) load + h->audio_off, h->audio_len);
     } else {
-        ufs_seek (&vfile, h->video_off);
+        ufs_seek(&vfile, h->video_off);
         vleft = h->video_len;
         vptr = vend = vbuf;
-        ufs_seek (&afile, h->audio_off);
+        ufs_seek(&afile, h->audio_off);
         aleft = h->audio_len;
-        i = mp3s_open_stream (abuf, ABUF_SIZE, audio_refill);
+        i = mp3s_open_stream(abuf, ABUF_SIZE, audio_refill);
     }
     if (i < 0) {
-        printf ("badapple: no MP3 audio in the file\n");
+        printf("badapple: no MP3 audio in the file\n");
         return 1;
     }
-    printf ("badapple: audio %d Hz, %d ch, %d kbit/s. Stop: STANDBY, remote key, "
+    printf("badapple: audio %d Hz, %d ch, %d kbit/s. Stop: STANDBY, remote key, "
             "serial key ('d' = debug overlay).\n",
             mp3s_info.samprate, mp3s_info.nChans, mp3s_info.bitrate / 1000);
 
-    fb_clear (&fb, BLACK);
-    ir_init ();
-    audio_start ();
-    while (tstc ()) {
-        getc ();
+    fb_clear(&fb, BLACK);
+    ir_init();
+    audio_start();
+    while (tstc()) {
+        getc();
     }
 
-    start = get_timer (0);
-    snap (&prev, 0, 0, 0, 0);
+    start = get_timer(0);
+    snap(&prev, 0, 0, 0, 0);
     while (!stop) {
         u32 queued, played, target, t0, u0, n = 0, now_ms;
 
-        if (standby_pressed () || ir_poll (&ev)) {
+        if (standby_pressed() || ir_poll(&ev)) {
             break;
         }
-        while (tstc ()) {
-            if (getc () == 'd') {
+        while (tstc()) {
+            if (getc() == 'd') {
                 debug = !debug;
                 if (!debug) {
-                    ovl_clear ();
+                    ovl_clear();
                 }
             } else {
                 stop = 1;
@@ -472,16 +472,16 @@ int main (int argc, char *argv[]) {
         if (audio_more) {
             u32 o0 = mp3s_out_frames;
 
-            t0 = ticks ();
+            t0 = ticks();
             u0 = ufs_ticks;
-            audio_more = mp3s_pump ();
+            audio_more = mp3s_pump();
             if (mp3s_out_frames != o0) {        /* ring full = idle polling */
-                audio_t += (ticks () - t0) - (ufs_ticks - u0);
+                audio_t += (ticks() - t0) - (ufs_ticks - u0);
             }
         }
 
         /* Samples actually played = written - still queued in the ring */
-        queued = ((AUD_REG (0x104) & AUD_MASK) << 3) / AUD_FRAME;
+        queued = ((AUD_REG(0x104) & AUD_MASK) << 3) / AUD_FRAME;
         played = mp3s_out_frames > queued ? mp3s_out_frames - queued : 0;
         target = played / (AUD_RATE / h->fps);
         if (!audio_more && queued < 64) {
@@ -491,10 +491,10 @@ int main (int argc, char *argv[]) {
         while (shown < target && shown < h->frames) {
             int ok;
 
-            t0 = ticks ();
+            t0 = ticks();
             u0 = ufs_ticks;
-            ok = next_video_frame ();
-            video_t += (ticks () - t0) - (ufs_ticks - u0);
+            ok = next_video_frame();
+            video_t += (ticks() - t0) - (ufs_ticks - u0);
             if (!ok) {
                 target = shown = h->frames;
                 break;
@@ -504,11 +504,11 @@ int main (int argc, char *argv[]) {
             if ((n & 3) == 0 && audio_more) {
                 u32 o0 = mp3s_out_frames;
 
-                t0 = ticks ();
+                t0 = ticks();
                 u0 = ufs_ticks;
-                audio_more = mp3s_pump ();     /* keep audio fed when catching up */
+                audio_more = mp3s_pump();     /* keep audio fed when catching up */
                 if (mp3s_out_frames != o0) {
-                    audio_t += (ticks () - t0) - (ufs_ticks - u0);
+                    audio_t += (ticks() - t0) - (ufs_ticks - u0);
                 }
             }
         }
@@ -520,17 +520,17 @@ int main (int argc, char *argv[]) {
             break;
         }
 
-        now_ms = get_timer (start);
+        now_ms = get_timer(start);
         if (now_ms - last_ovl >= 500) {
             last_ovl = now_ms;
-            snap (&now, audio_t, video_t, osd_t, shown);
+            snap(&now, audio_t, video_t, osd_t, shown);
             audio_ms += (now.audio - prev.audio) / TICKS_PER_MS;
             video_ms += (now.video - prev.video) / TICKS_PER_MS;
             usb_ms += (now.usb - prev.usb) / TICKS_PER_MS;
             if (debug) {
-                t0 = ticks ();
-                ovl_draw (&now, &prev, h->frames, h->fps, behind, lag_max);
-                osd_t += ticks () - t0;
+                t0 = ticks();
+                ovl_draw(&now, &prev, h->frames, h->fps, behind, lag_max);
+                osd_t += ticks() - t0;
             }
             prev = now;
         }
@@ -538,20 +538,20 @@ int main (int argc, char *argv[]) {
             u32 s = shown / h->fps;
 
             last_print = now_ms;
-            printf ("\r  %d:%02d  frame %d / %d ", s / 60, s % 60, shown, h->frames);
+            printf("\r  %d:%02d  frame %d / %d ", s / 60, s % 60, shown, h->frames);
         }
     }
 
-    mp3s_drain ();
-    while (standby_pressed ()) {
-        udelay (10000);
+    mp3s_drain();
+    while (standby_pressed()) {
+        udelay(10000);
     }
-    audio_stop ();
-    fb_clear (&fb, TRANSPARENT);
+    audio_stop();
+    fb_clear(&fb, TRANSPARENT);
 
-    printf ("\nbadapple done: %d / %d frames, video %d ms, audio %d ms, USB %d ms "
+    printf("\nbadapple done: %d / %d frames, video %d ms, audio %d ms, USB %d ms "
             "(%d KB), max %d frames in one step\n", shown, h->frames,
             video_ms, audio_ms, usb_ms, ufs_bytes / 1024, lag_max);
-    mp3s_report ("badapple");
+    mp3s_report("badapple");
     return 0;
 }

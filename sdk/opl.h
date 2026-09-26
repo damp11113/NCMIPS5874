@@ -22,9 +22,9 @@
 /* 9 OPL2 channels + 9 more in a second register bank (reg | 0x100) */
 #define OPL_CHANNELS 18
 
-void opl_init (int rate);
-void opl_reset (void);
-void opl_write (int reg, int val);
-void opl_render (int *left, int *right, int n, const int *pan_l, const int *pan_r);
+void opl_init(int rate);
+void opl_reset(void);
+void opl_write(int reg, int val);
+void opl_render(int *left, int *right, int n, const int *pan_l, const int *pan_r);
 
 #endif

@@ -4,8 +4,8 @@
  */
 #include "snaptx.h"
 
-void hook_main (txprint_t pf) {
-    pf ("\n=== SNAPTX BEGIN (firmware) ===\n");
-    snaptx_dump (pf);
-    pf ("=== SNAPTX END ===\n");
+void hook_main(txprint_t pf) {
+    pf("\n=== SNAPTX BEGIN (firmware) ===\n");
+    snaptx_dump(pf);
+    pf("=== SNAPTX END ===\n");
 }

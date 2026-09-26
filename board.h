@@ -23,38 +23,38 @@
 #define LED_GREEN   (1u << 7)   /* pin 71 */
 #define BTN_STANDBY (1u << 11)  /* pin 11, active low */
 
-static inline void led_set (u32 mask, int on) {
+static inline void led_set(u32 mask, int on) {
     if (on) {
-        REG32 (GPIO2_OUT) |= mask;
+        REG32(GPIO2_OUT) |= mask;
     } else {
-        REG32 (GPIO2_OUT) &= ~mask;
+        REG32(GPIO2_OUT) &= ~mask;
     }
 }
 
-static inline void led_red (int on) {
-    led_set (LED_RED, on);
+static inline void led_red(int on) {
+    led_set(LED_RED, on);
 }
 
-static inline void led_green (int on) {
-    led_set (LED_GREEN, on);
+static inline void led_green(int on) {
+    led_set(LED_GREEN, on);
 }
 
-static inline int standby_pressed (void) {
-    return (REG32 (GPIO0_IN) & BTN_STANDBY) == 0;
+static inline int standby_pressed(void) {
+    return (REG32(GPIO0_IN) & BTN_STANDBY) == 0;
 }
 
 /* Block until STANDBY is pressed and released, or a serial key arrives.
  * Returns 1 for the button, 0 for a serial key. */
-static inline int wait_standby (void) {
-    while (!standby_pressed ()) {
-        if (tstc ()) {
-            getc ();
+static inline int wait_standby(void) {
+    while (!standby_pressed()) {
+        if (tstc()) {
+            getc();
             return 0;
         }
-        udelay (10000);
+        udelay(10000);
     }
-    while (standby_pressed ()) {
-        udelay (10000);
+    while (standby_pressed()) {
+        udelay(10000);
     }
     return 1;
 }

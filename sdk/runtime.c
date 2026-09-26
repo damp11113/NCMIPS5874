@@ -27,23 +27,23 @@
 #define BOX_WANT_AUDIO              /* audio_stop () when the stick is gone */
 #include "sdk.h"
 
-int main (int argc, char *argv[]);
+int main(int argc, char *argv[]);
 
 char sdk_app_dir[SDK_PATH_MAX];
 char sdk_data_dir[SDK_PATH_MAX];
-void (*sdk_load_progress) (u32 done, u32 total);
+void(*sdk_load_progress) (u32 done, u32 total);
 
 static void *exit_buf[5];
 static int exit_code;
-static void (*atexit_fn[8]) (void);
+static void(*atexit_fn[8]) (void);
 static int atexit_count;
 
 /* ---- entry / exit ---- */
 
 extern unsigned int __bss_start[], __bss_end[];
-int _start (int argc, char *argv[]);
-void sdk_heap_region (size_t start, size_t end);        /* libc.c */
-char *ub_getenv (const char *name);                     /* ub_exports.S */
+int _start(int argc, char *argv[]);
+void sdk_heap_region(size_t start, size_t end);        /* libc.c */
+char *ub_getenv(const char *name);                     /* ub_exports.S */
 
 /* Big memory: the boot script can start the AV core with less video
  * memory (avenv_VIDEO_FW_CFG_SIZE) and set nc_bigmem=1; the rest of its
@@ -65,79 +65,79 @@ u32 sdk_bigmem_bytes;
 
 int sdk_box_sat;
 
-static void heap_regions (void) {
+static void heap_regions(void) {
     u32 limit = (u32) _start >= SDK_LAUNCHER_ADDR ? SDK_LAUNCHER_ADDR + 0x200000 : SDK_APP_END;
-    const char *big = ub_getenv ("nc_bigmem");
+    const char *big = ub_getenv("nc_bigmem");
 
     if (sdk_box_sat) {
-        sdk_heap_region (SAT_HIGH_START, SAT_HIGH_END);
-        sdk_heap_region (SAT_LOW_START, SAT_LOW_END);
-        sdk_heap_region ((u32) __bss_end + 0x10000, limit - 0x10000);
+        sdk_heap_region(SAT_HIGH_START, SAT_HIGH_END);
+        sdk_heap_region(SAT_LOW_START, SAT_LOW_END);
+        sdk_heap_region((u32) __bss_end + 0x10000, limit - 0x10000);
         return;
     }
-    sdk_heap_region (SDK_HEAP_START, SDK_HEAP_END);
+    sdk_heap_region(SDK_HEAP_START, SDK_HEAP_END);
     /* the rest of our own load area (the image ends at __bss_end) */
-    sdk_heap_region ((u32) __bss_end + 0x10000, limit - 0x10000);
+    sdk_heap_region((u32) __bss_end + 0x10000, limit - 0x10000);
     if (big && big[0] == '1') {
-        const char *addr = ub_getenv ("avenv_VIDEO_FW_CFG_ADDR");
-        const char *size = ub_getenv ("avenv_VIDEO_FW_CFG_SIZE");
+        const char *addr = ub_getenv("avenv_VIDEO_FW_CFG_ADDR");
+        const char *size = ub_getenv("avenv_VIDEO_FW_CFG_SIZE");
 
         if (addr && size) {
-            u32 start = 0x80000000u | ((strtoul (addr, 0, 16) + strtoul (size, 0, 16)) & 0x1fffffffu);
+            u32 start = 0x80000000u | ((strtoul(addr, 0, 16) + strtoul(size, 0, 16)) & 0x1fffffffu);
 
             if (start < AV_VIDEO_END) {
                 sdk_bigmem_bytes = AV_VIDEO_END - start;
-                sdk_heap_region (start + 0x10000, AV_VIDEO_END);
+                sdk_heap_region(start + 0x10000, AV_VIDEO_END);
             }
         }
     }
 }
-extern void (*__init_array_start[]) (void);
-extern void (*__init_array_end[]) (void);
+extern void(*__init_array_start[]) (void);
+extern void(*__init_array_end[]) (void);
 
-static void run_atexit (void) {
+static void run_atexit(void) {
     while (atexit_count > 0) {
         atexit_fn[--atexit_count] ();
     }
 }
 
-static void copy_arg (char *dst, const char *src) {
-    strncpy (dst, src, SDK_PATH_MAX - 1);
+static void copy_arg(char *dst, const char *src) {
+    strncpy(dst, src, SDK_PATH_MAX - 1);
     dst[SDK_PATH_MAX - 1] = 0;
 }
 
-__attribute__ ((section (".text.start")))
-int _start (int argc, char *argv[]) {
+__attribute__((section(".text.start")))
+int _start(int argc, char *argv[]) {
     static char *args[32];
     volatile unsigned int *p;
-    void (**ctor) (void);
+    void(**ctor) (void);
     int n = 0, i = 1;
 
     for (p = __bss_start; p < __bss_end; p++) {
         *p = 0;
     }
-    sdk_box_sat = ub_build () && ub_build ()->box == UB_BOX_SAT;
+    sdk_box_sat = ub_build() && ub_build()->box == UB_BOX_SAT;
     if (sdk_box_sat) {
-        fd650_init (0x200);
+        fd650_init(0x200);
     }
-    heap_regions ();
+    heap_regions();
     for (ctor = __init_array_start; ctor < __init_array_end; ctor++) {
         (*ctor) ();
     }
 
     args[n++] = "app";
-    if (argc > 0 && !strncmp (argv[0], "@app=", 5)) {
-        copy_arg (sdk_app_dir, argv[0] + 5);
-        if (argc > 1 && !strncmp (argv[1], "@data=", 6)) {
-            copy_arg (sdk_data_dir, argv[1] + 6);
+    if (argc > 0 && !strncmp(argv[0], "@app=", 5)) {
+        copy_arg(sdk_app_dir, argv[0] + 5);
+        if (argc > 1 && !strncmp(argv[1], "@data=", 6)) {
+            copy_arg(sdk_data_dir, argv[1] + 6);
             i = 2;
         }
-        if (i < argc && !strncmp (argv[i], "@ovl=", 5)) {
+        if (i < argc && !strncmp(argv[i], "@ovl=", 5)) {
             sdk_overlay_on = argv[i][5] == '1';
             i++;
         }
-        if (i < argc && !strncmp (argv[i], "@saver=", 7)) {
-            sdk_saver_min = atoi (argv[i] + 7);
+        if (i < argc && !strncmp(argv[i], "@saver=", 7)) {
+            sdk_saver_min = atoi(argv[i] + 7);
             i++;
         }
     }
@@ -146,20 +146,20 @@ int _start (int argc, char *argv[]) {
     }
     args[n] = 0;
 
-    if (__builtin_setjmp (exit_buf) == 0) {
-        exit_code = main (n, args);
+    if (__builtin_setjmp(exit_buf) == 0) {
+        exit_code = main(n, args);
     }
-    run_atexit ();
+    run_atexit();
     return exit_code;
 }
 
-void sdk_exit (int code) {
+void sdk_exit(int code) {
     exit_code = code;
-    __builtin_longjmp (exit_buf, 1);
+    __builtin_longjmp(exit_buf, 1);
 }
 
-int atexit (void (*fn) (void)) {
-    if (atexit_count == (int) (sizeof (atexit_fn) / sizeof (atexit_fn[0]))) {
+int atexit(void(*fn) (void)) {
+    if (atexit_count == (int) (sizeof(atexit_fn) / sizeof(atexit_fn[0]))) {
         return -1;
     }
     atexit_fn[atexit_count++] = fn;
@@ -175,7 +175,7 @@ static int mounted;
  * more, so every SDK app ends up here instead of hanging. Put it back and
  * press OK (or wait: re-inserting is detected) to restart the box.
  */
-static void usb_lost (void) {
+static void usb_lost(void) {
     static int shown;
     struct fb f;
     struct sdk_key k;
@@ -184,45 +184,45 @@ static void usb_lost (void) {
     if (shown++) {
         return;
     }
-    memset (&f, 0, sizeof (f));
-    audio_stop ();                  /* else the output holds the last sample (DC) */
-    printf ("\nsdk: USB stick removed or not answering\n");
-    if (osd_setup (&f) == 0) {
-        fb_clear (&f, RGB (60, 10, 10));
-        fb_text (&f, 80, 200, "USB stick removed", 4, WHITE, TRANSPARENT);
-        fb_text (&f, 80, 300, "Put the stick back in, then press OK", 2, WHITE, TRANSPARENT);
-        fb_text (&f, 80, 340, "(or POWER) to restart the box.", 2, WHITE, TRANSPARENT);
+    memset(&f, 0, sizeof(f));
+    audio_stop();                  /* else the output holds the last sample (DC) */
+    printf("\nsdk: USB stick removed or not answering\n");
+    if (osd_setup(&f) == 0) {
+        fb_clear(&f, RGB(60, 10, 10));
+        fb_text(&f, 80, 200, "USB stick removed", 4, WHITE, TRANSPARENT);
+        fb_text(&f, 80, 300, "Put the stick back in, then press OK", 2, WHITE, TRANSPARENT);
+        fb_text(&f, 80, 340, "(or POWER) to restart the box.", 2, WHITE, TRANSPARENT);
     }
     for (;;) {
-        if (!back && ufs_stick_present ()) {
+        if (!back && ufs_stick_present()) {
             back = 1;
-            printf ("sdk: stick is back\n");
+            printf("sdk: stick is back\n");
             if (f.pix) {
-                fb_text (&f, 80, 420, "Stick found - press OK to restart", 2, YELLOW, TRANSPARENT);
+                fb_text(&f, 80, 420, "Stick found - press OK to restart", 2, YELLOW, TRANSPARENT);
             }
         }
-        if (sdk_key_poll (&k) && (k.btn == BTN_OK || k.btn == BTN_POWER) && !k.repeat) {
-            sdk_reboot ();
+        if (sdk_key_poll(&k) && (k.btn == BTN_OK || k.btn == BTN_POWER) && !k.repeat) {
+            sdk_reboot();
         }
-        if (standby_pressed ()) {
-            sdk_reboot ();
+        if (standby_pressed()) {
+            sdk_reboot();
         }
-        ub_udelay (20000);
+        ub_udelay(20000);
     }
 }
 
 /* After any USB access: stop here if the stick is gone */
-static inline void lost_check (void) {
+static inline void lost_check(void) {
     if (ufs_lost) {
-        usb_lost ();
+        usb_lost();
     }
 }
 
-static int mount (void) {
-    lost_check ();
+static int mount(void) {
+    lost_check();
     if (!mounted) {
-        if (ufs_mount () < 0) {
-            lost_check ();
+        if (ufs_mount() < 0) {
+            lost_check();
             return -1;
         }
         mounted = 1;
@@ -231,93 +231,93 @@ static int mount (void) {
 }
 
 /* Full path on the stick for an app path */
-void sdk_resolve (const char *path, char *out) {
+void sdk_resolve(const char *path, char *out) {
     if (path[0] == '/' || !sdk_app_dir[0]) {
-        copy_arg (out, path[0] == '/' ? path + 1 : path);
+        copy_arg(out, path[0] == '/' ? path + 1 : path);
     } else {
-        snprintf (out, SDK_PATH_MAX, "%s/%s", sdk_app_dir, path);
+        snprintf(out, SDK_PATH_MAX, "%s/%s", sdk_app_dir, path);
     }
 }
 
-long sdk_file_size (const char *path) {
+long sdk_file_size(const char *path) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
-    sdk_resolve (path, full);
-    if (ufs_open (&f, full) < 0) {
-        lost_check ();
+    sdk_resolve(path, full);
+    if (ufs_open(&f, full) < 0) {
+        lost_check();
         return -1;
     }
     return f.size;
 }
 
 /* Read up to max bytes of a file to dst. Returns the size read, or -1. */
-long sdk_read_file (const char *path, void *dst, long max) {
+long sdk_read_file(const char *path, void *dst, long max) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
     u32 done = 0, total;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
-    sdk_resolve (path, full);
-    if (ufs_open (&f, full) < 0) {
+    sdk_resolve(path, full);
+    if (ufs_open(&f, full) < 0) {
         return -1;
     }
     total = f.size < (u32) max ? f.size : (u32) max;
     while (done < total) {
-        u32 n = ufs_read (&f, (unsigned char *) dst + done,
+        u32 n = ufs_read(&f, (unsigned char *) dst + done,
                           total - done < 256 * 1024 ? total - done : 256 * 1024);
 
         if (n == 0) {
-            lost_check ();
+            lost_check();
             return -1;
         }
         done += n;
         if (sdk_load_progress) {
-            sdk_load_progress (done, total);
+            sdk_load_progress(done, total);
         }
     }
     return done;
 }
 
 /* Whole file into malloc'd memory (for fopen). Returns 0, or -1. */
-int sdk_load_file (const char *path, unsigned char **data, long *size) {
+int sdk_load_file(const char *path, unsigned char **data, long *size) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
     unsigned char *buf;
     u32 done = 0;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
-    sdk_resolve (path, full);
-    if (ufs_open (&f, full) < 0) {                  /* one lookup, not two */
-        lost_check ();
+    sdk_resolve(path, full);
+    if (ufs_open(&f, full) < 0) {                  /* one lookup, not two */
+        lost_check();
         return -1;
     }
-    buf = malloc (f.size + 1);
+    buf = malloc(f.size + 1);
     if (!buf) {
-        printf ("sdk: no memory for %s (%u bytes)\n", path, f.size);
+        printf("sdk: no memory for %s (%u bytes)\n", path, f.size);
         return -1;
     }
     if (f.size > 1024 * 1024) {
-        printf ("sdk: loading %s (%u KB) from USB\n", path, f.size / 1024);
+        printf("sdk: loading %s (%u KB) from USB\n", path, f.size / 1024);
     }
     while (done < f.size) {
-        u32 n = ufs_read (&f, buf + done, f.size - done < 256 * 1024 ? f.size - done : 256 * 1024);
+        u32 n = ufs_read(&f, buf + done, f.size - done < 256 * 1024 ? f.size - done : 256 * 1024);
 
         if (n == 0) {
-            free (buf);
-            lost_check ();
+            free(buf);
+            lost_check();
             return -1;
         }
         done += n;
         if (sdk_load_progress) {
-            sdk_load_progress (done, f.size);
+            sdk_load_progress(done, f.size);
         }
     }
     *data = buf;
@@ -325,22 +325,130 @@ int sdk_load_file (const char *path, unsigned char **data, long *size) {
     return 0;
 }
 
-u32 sdk_usb_bytes (void) {
+u32 sdk_usb_bytes(void) {
     return ufs_bytes;
 }
 
 /* Replace a 512-byte settings file in place (see ufs_overwrite). 0 = ok. */
-int sdk_overwrite_sector_file (const char *path, const void *data, const char *magic) {
+int sdk_overwrite_sector_file(const char *path, const void *data, const char *magic) {
     char full[SDK_PATH_MAX];
     int rc;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
-    sdk_resolve (path, full);
-    rc = ufs_overwrite (full, data, magic);
-    lost_check ();
+    sdk_resolve(path, full);
+    rc = ufs_overwrite(full, data, magic);
+    lost_check();
     return rc;
+}
+
+/* ---- app config (APPSDATA/<app>/CONFIG.TXT, see sdk.h) ---- */
+
+#define CFG_MAX     16
+#define CFG_SIZE    512
+
+static struct { char key[16]; char val[32]; } cfg[CFG_MAX];
+static int cfg_n;
+
+static int cfg_path(char *path) {
+    if (!sdk_data_dir[0]) {
+        return -1;
+    }
+    snprintf(path, SDK_PATH_MAX, "/%s/CONFIG.TXT", sdk_data_dir);
+    return 0;
+}
+
+int sdk_config_load(void) {
+    static char buf[CFG_SIZE + 1];
+    char path[SDK_PATH_MAX], *line, *next;
+    long n;
+
+    cfg_n = 0;
+    if (cfg_path(path) < 0 || (n = sdk_read_file(path, buf, CFG_SIZE)) <= 0) {
+        return -1;
+    }
+    buf[n] = 0;
+    for (line = buf; line && *line; line = next) {
+        char *eq;
+
+        next = strchr(line, '\n');
+        if (next) {
+            *next++ = 0;
+        }
+        eq = strchr(line, '=');
+        if (line[0] != '#' && eq && eq > line) {
+            *eq = 0;
+            sdk_config_set(line, eq + 1);
+        }
+    }
+    return 0;
+}
+
+const char *sdk_config_get(const char *key, const char *def) {
+    int i;
+
+    for (i = 0; i < cfg_n; i++) {
+        if (!strcmp(cfg[i].key, key)) {
+            return cfg[i].val;
+        }
+    }
+    return def;
+}
+
+int sdk_config_get_int(const char *key, int def) {
+    const char *v = sdk_config_get(key, 0);
+
+    return v ? atoi(v) : def;
+}
+
+void sdk_config_set(const char *key, const char *value) {
+    int i, n;
+
+    for (i = 0; i < cfg_n && strcmp(cfg[i].key, key); i++) {
+    }
+    if (i == cfg_n) {
+        if (cfg_n == CFG_MAX) {
+            return;
+        }
+        cfg_n++;
+        strncpy(cfg[i].key, key, sizeof(cfg[i].key) - 1);
+        cfg[i].key[sizeof(cfg[i].key) - 1] = 0;
+    }
+    /* a value must stay on its line */
+    for (n = 0; n < (int) sizeof(cfg[i].val) - 1 && value[n] && value[n] != '\r' &&
+         value[n] != '\n'; n++) {
+        cfg[i].val[n] = value[n];
+    }
+    cfg[i].val[n] = 0;
+}
+
+void sdk_config_set_int(const char *key, int value) {
+    char v[16];
+
+    snprintf(v, sizeof(v), "%d", value);
+    sdk_config_set(key, v);
+}
+
+int sdk_config_save(void) {
+    static char buf[CFG_SIZE];
+    char path[SDK_PATH_MAX];
+    int n, i;
+
+    if (cfg_path(path) < 0) {
+        return -1;
+    }
+    n = snprintf(buf, sizeof(buf), SDK_CONFIG_MAGIC "\n"
+                  "# Written by the app. Keep it exactly 512 bytes (overwritten in place).\n");
+    for (i = 0; i < cfg_n; i++) {
+        n += snprintf(buf + n, sizeof(buf) - n, "%s=%s\n", cfg[i].key, cfg[i].val);
+        if (n >= CFG_SIZE - 1) {
+            return -1;
+        }
+    }
+    memset(buf + n, '#', CFG_SIZE - 1 - n);
+    buf[CFG_SIZE - 1] = '\n';
+    return sdk_overwrite_sector_file(path, buf, SDK_CONFIG_MAGIC);
 }
 
 /* ---- streamed files (songs, big data: read in pieces, seek) ---- */
@@ -349,11 +457,11 @@ int sdk_overwrite_sector_file (const char *path, const void *data, const char *m
 static struct ufile streams[MAX_STREAMS];
 static int stream_used[MAX_STREAMS];
 
-int sdk_open (const char *path) {
+int sdk_open(const char *path) {
     char full[SDK_PATH_MAX];
     int h;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
     for (h = 0; h < MAX_STREAMS && stream_used[h]; h++) {
@@ -361,63 +469,63 @@ int sdk_open (const char *path) {
     if (h == MAX_STREAMS) {
         return -1;
     }
-    sdk_resolve (path, full);
-    if (ufs_open (&streams[h], full) < 0) {
-        lost_check ();
+    sdk_resolve(path, full);
+    if (ufs_open(&streams[h], full) < 0) {
+        lost_check();
         return -1;
     }
     stream_used[h] = 1;
     return h;
 }
 
-long sdk_read (int h, void *dst, long len) {
+long sdk_read(int h, void *dst, long len) {
     long n;
 
     if (h < 0 || h >= MAX_STREAMS || !stream_used[h] || len <= 0) {
         return 0;
     }
-    n = ufs_read (&streams[h], dst, len);
-    lost_check ();
+    n = ufs_read(&streams[h], dst, len);
+    lost_check();
     return n;
 }
 
-void sdk_seek (int h, u32 pos) {
+void sdk_seek(int h, u32 pos) {
     if (h >= 0 && h < MAX_STREAMS && stream_used[h]) {
-        ufs_seek (&streams[h], pos);
+        ufs_seek(&streams[h], pos);
     }
 }
 
-u32 sdk_tell (int h) {
+u32 sdk_tell(int h) {
     return (h >= 0 && h < MAX_STREAMS && stream_used[h]) ? streams[h].pos : 0;
 }
 
-u32 sdk_size (int h) {
+u32 sdk_size(int h) {
     return (h >= 0 && h < MAX_STREAMS && stream_used[h]) ? streams[h].size : 0;
 }
 
-void sdk_close (int h) {
+void sdk_close(int h) {
     if (h >= 0 && h < MAX_STREAMS) {
         stream_used[h] = 0;
     }
 }
 
-u32 sdk_usb_ticks (void) {
+u32 sdk_usb_ticks(void) {
     return ufs_ticks;
 }
 
 /* USB stick details (for info screens). Returns 0, or -1. */
-int sdk_storage_info (struct sdk_storage *st) {
+int sdk_storage_info(struct sdk_storage *st) {
     const char *d;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
     d = (const char *) ufs_dev;
-    memcpy (st->vendor, d + 24, 40);
+    memcpy(st->vendor, d + 24, 40);
     st->vendor[40] = 0;
-    memcpy (st->product, d + 65, 20);
+    memcpy(st->product, d + 65, 20);
     st->product[20] = 0;
-    memcpy (st->revision, d + 86, 8);
+    memcpy(st->revision, d + 86, 8);
     st->revision[8] = 0;
     st->blocks = *(const u32 *) (d + 16);
     st->block_size = *(const u32 *) (d + 20);
@@ -432,11 +540,11 @@ int sdk_storage_info (struct sdk_storage *st) {
 static struct udir dirs[MAX_DIRS];
 static int dir_used[MAX_DIRS];
 
-int sdk_dir_open (const char *path) {
+int sdk_dir_open(const char *path) {
     char full[SDK_PATH_MAX];
     int h;
 
-    if (mount () < 0) {
+    if (mount() < 0) {
         return -1;
     }
     for (h = 0; h < MAX_DIRS && dir_used[h]; h++) {
@@ -444,29 +552,29 @@ int sdk_dir_open (const char *path) {
     if (h == MAX_DIRS) {
         return -1;
     }
-    sdk_resolve (path, full);
-    if (ufs_opendir (&dirs[h], full) < 0) {
-        lost_check ();
+    sdk_resolve(path, full);
+    if (ufs_opendir(&dirs[h], full) < 0) {
+        lost_check();
         return -1;
     }
     dir_used[h] = 1;
     return h;
 }
 
-int sdk_dir_read (int h, struct sdk_dirent *e) {
+int sdk_dir_read(int h, struct sdk_dirent *e) {
     struct udirent u;
 
-    if (h < 0 || h >= MAX_DIRS || !dir_used[h] || !ufs_readdir (&dirs[h], &u)) {
-        lost_check ();
+    if (h < 0 || h >= MAX_DIRS || !dir_used[h] || !ufs_readdir(&dirs[h], &u)) {
+        lost_check();
         return 0;
     }
-    copy_arg (e->name, u.name);
+    copy_arg(e->name, u.name);
     e->is_dir = u.is_dir;
     e->size = u.size;
     return 1;
 }
 
-void sdk_dir_close (int h) {
+void sdk_dir_close(int h) {
     if (h >= 0 && h < MAX_DIRS) {
         dir_used[h] = 0;
     }
@@ -478,30 +586,30 @@ void sdk_dir_close (int h) {
  * register sequence as U-Boot's reset command (its _machine_restart
  * helper at link 0x80104a64). The box then boots from flash as at
  * power-on. */
-void sdk_reboot (void) {
-    REG32 (0xbf100104) = 0x12345678;
-    REG32 (0xbf100108) = 0;
-    REG32 (0xbf100100) = 0;
-    REG32 (0xbf100108) = 1;
-    REG32 (0xbf100104) = 0;
+void sdk_reboot(void) {
+    REG32(0xbf100104) = 0x12345678;
+    REG32(0xbf100108) = 0;
+    REG32(0xbf100100) = 0;
+    REG32(0xbf100108) = 1;
+    REG32(0xbf100104) = 0;
     for (;;) {
-        ub_udelay (1000);
+        ub_udelay(1000);
     }
 }
 
 /* ---- launcher helpers ---- */
 
 /* Make freshly loaded code visible to instruction fetch */
-void sdk_cache_sync (u32 start, u32 len) {
+void sdk_cache_sync(u32 start, u32 len) {
     u32 a;
 
     for (a = start & ~31u; a < start + len; a += 32) {
-        __asm__ volatile (
+        __asm__ volatile(
             "cache 0x15, 0(%0)\n\t"     /* D: hit writeback invalidate */
             "cache 0x10, 0(%0)"         /* I: hit invalidate */
             : : "r" (a) : "memory");
     }
-    __asm__ volatile ("sync" : : : "memory");
+    __asm__ volatile("sync" : : : "memory");
 }
 
 /* ---- input: remote + serial as buttons ---- */
@@ -533,27 +641,27 @@ int sdk_screen_off;
 static u32 saver_last_ms, saver_layer;
 static int saver_on, saver_eat_repeat;
 
-static void saver_wake (void) {
-    REG32 (0xbf44006c) = saver_layer;
-    REG32 (0xbf440060) = 0x00000001;
+static void saver_wake(void) {
+    REG32(0xbf44006c) = saver_layer;
+    REG32(0xbf440060) = 0x00000001;
     saver_on = sdk_screen_off = 0;
-    printf ("sdk: screen saver off\n");
+    printf("sdk: screen saver off\n");
 }
 
-void sdk_saver_kick (void) {
-    saver_last_ms = ub_get_timer (0);
+void sdk_saver_kick(void) {
+    saver_last_ms = ub_get_timer(0);
     if (saver_on) {
-        saver_wake ();
+        saver_wake();
     }
 }
 
-static void saver_check (void) {
+static void saver_check(void) {
     u32 now;
 
     if (!sdk_saver_min || saver_on) {
         return;
     }
-    now = ub_get_timer (0);
+    now = ub_get_timer(0);
     if (!saver_last_ms) {
         saver_last_ms = now;
         return;
@@ -561,22 +669,22 @@ static void saver_check (void) {
     if (now - saver_last_ms < sdk_saver_min * 60000u) {
         return;
     }
-    if (REG32 (0xbf441028) != OSD_HDR_PHYS >> 3) {  /* not our OSD layer: leave it */
+    if (REG32(0xbf441028) != OSD_HDR_PHYS >> 3) {  /* not our OSD layer: leave it */
         saver_last_ms = now;
         return;
     }
-    saver_layer = REG32 (0xbf44006c);
-    REG32 (0xbf44006c) = 0x00000010;                /* layers as U-Boot left them: no OSD */
-    REG32 (0xbf440060) = 0x00000001;
+    saver_layer = REG32(0xbf44006c);
+    REG32(0xbf44006c) = 0x00000010;                /* layers as U-Boot left them: no OSD */
+    REG32(0xbf440060) = 0x00000001;
     saver_on = sdk_screen_off = 1;
-    printf ("sdk: screen saver on after %d min (any key wakes)\n", sdk_saver_min);
+    printf("sdk: screen saver on after %d min (any key wakes)\n", sdk_saver_min);
 }
 
 /* A key arrived: 1 = it only woke the screen (swallow it) */
-static int saver_key (int repeat) {
-    saver_last_ms = ub_get_timer (0);
+static int saver_key(int repeat) {
+    saver_last_ms = ub_get_timer(0);
     if (saver_on) {
-        saver_wake ();
+        saver_wake();
         saver_eat_repeat = 1;
         return 1;
     }
@@ -594,43 +702,43 @@ static int saver_key (int repeat) {
 int sdk_overlay_on;
 static u32 idle_ticks;
 
-static inline u32 cp0_count (void) {
+static inline u32 cp0_count(void) {
     u32 v;
 
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
-void sdk_idle (u32 us) {
-    u32 t0 = cp0_count ();
+void sdk_idle(u32 us) {
+    u32 t0 = cp0_count();
 
-    ub_udelay (us);
-    idle_ticks += cp0_count () - t0;
-    sdk_overlay_tick ();
+    ub_udelay(us);
+    idle_ticks += cp0_count() - t0;
+    sdk_overlay_tick();
 }
 
 extern size_t heap_in_use, heap_total;
 
 #define OVL_H       18
-#define OVL_BG      RGB (8, 8, 16)
+#define OVL_BG      RGB(8, 8, 16)
 #define OVL_TICKS   (324000u * 500)             /* 0.5 s of CP0 Count */
 
-static void ovl_bar (struct fb *f, int x, int w, int pct, u16 color) {
+static void ovl_bar(struct fb *f, int x, int w, int pct, u16 color) {
     int fill = w * (pct > 100 ? 100 : pct) / 100;
 
-    fb_rect (f, x, 4, fill, OVL_H - 8, color);
-    fb_rect (f, x + fill, 4, w - fill, OVL_H - 8, RGB (40, 40, 60));
+    fb_rect(f, x, 4, fill, OVL_H - 8, color);
+    fb_rect(f, x + fill, 4, w - fill, OVL_H - 8, RGB(40, 40, 60));
 }
 
-void sdk_overlay_tick (void) {
+void sdk_overlay_tick(void) {
     static u32 last, last_idle, last_usb;
     static int was_on;
     struct fb f;
-    u32 now = cp0_count (), wall, idle, usb, heap_kb;
+    u32 now = cp0_count(), wall, idle, usb, heap_kb;
     int cpu, mem;
     char line[64];
 
-    saver_check ();
+    saver_check();
     if ((!sdk_overlay_on && !was_on) || sdk_screen_off) {
         return;
     }
@@ -639,7 +747,7 @@ void sdk_overlay_tick (void) {
         return;
     }
     /* Only draw if the OSD layer is ours (osd_setup ran) */
-    if (REG32 (0xbf441028) != OSD_HDR_PHYS >> 3) {
+    if (REG32(0xbf441028) != OSD_HDR_PHYS >> 3) {
         return;
     }
     f.pix = (volatile u16 *) (0xa0000000u | OSD_PIX_PHYS);
@@ -647,7 +755,7 @@ void sdk_overlay_tick (void) {
     f.h = 720;
     f.pitch = 1280;
     if (!sdk_overlay_on) {                      /* switched off: clear the strip once */
-        fb_rect (&f, 0, 0, f.w, OVL_H, TRANSPARENT);
+        fb_rect(&f, 0, 0, f.w, OVL_H, TRANSPARENT);
         was_on = 0;
         return;
     }
@@ -662,33 +770,33 @@ void sdk_overlay_tick (void) {
     last_usb = ufs_bytes;
     was_on = 1;
 
-    fb_rect (&f, 0, 0, f.w, OVL_H, OVL_BG);
-    snprintf (line, sizeof (line), "CPU %3d%%", cpu);
-    fb_text (&f, 8, 1, line, 1, WHITE, TRANSPARENT);
-    ovl_bar (&f, 80, 160, cpu, cpu > 85 ? RED : cpu > 60 ? YELLOW : GREEN);
-    snprintf (line, sizeof (line), "MEM %d.%d/%dM", heap_kb / 1024, heap_kb * 10 / 1024 % 10,
+    fb_rect(&f, 0, 0, f.w, OVL_H, OVL_BG);
+    snprintf(line, sizeof(line), "CPU %3d%%", cpu);
+    fb_text(&f, 8, 1, line, 1, WHITE, TRANSPARENT);
+    ovl_bar(&f, 80, 160, cpu, cpu > 85 ? RED : cpu > 60 ? YELLOW : GREEN);
+    snprintf(line, sizeof(line), "MEM %d.%d/%dM", heap_kb / 1024, heap_kb * 10 / 1024 % 10,
               (int) (heap_total >> 20));
-    fb_text (&f, 256, 1, line, 1, WHITE, TRANSPARENT);
-    ovl_bar (&f, 360, 160, mem, mem > 85 ? RED : CYAN);
-    snprintf (line, sizeof (line), "USB %4dK/s",
+    fb_text(&f, 256, 1, line, 1, WHITE, TRANSPARENT);
+    ovl_bar(&f, 360, 160, mem, mem > 85 ? RED : CYAN);
+    snprintf(line, sizeof(line), "USB %4dK/s",
               (int) ((unsigned long long) usb * 324000000u / (wall ? wall : 1) / 1024));
-    fb_text (&f, 536, 1, line, 1, GREY, TRANSPARENT);
-    if ((AUD_REG (0x00) & 0xfff) == 0x305) {     /* audio playing: how much is queued */
-        u32 q = ((AUD_REG (0x104) & AUD_MASK) << 3) / AUD_FRAME;
+    fb_text(&f, 536, 1, line, 1, GREY, TRANSPARENT);
+    if ((AUD_REG(0x00) & 0xfff) == 0x305) {     /* audio playing: how much is queued */
+        u32 q = ((AUD_REG(0x104) & AUD_MASK) << 3) / AUD_FRAME;
 
-        snprintf (line, sizeof (line), "AUDIO %3dms", q / 48);
-        fb_text (&f, 640, 1, line, 1, q < 2400 ? YELLOW : GREY, TRANSPARENT);
+        snprintf(line, sizeof(line), "AUDIO %3dms", q / 48);
+        fb_text(&f, 640, 1, line, 1, q < 2400 ? YELLOW : GREY, TRANSPARENT);
     }
     {
-        u32 up = ub_get_timer (0) / 1000;
+        u32 up = ub_get_timer(0) / 1000;
 
-        snprintf (line, sizeof (line), "UP %d:%02d:%02d", up / 3600, up / 60 % 60, up % 60);
-        fb_text (&f, 752, 1, line, 1, GREY, TRANSPARENT);
+        snprintf(line, sizeof(line), "UP %d:%02d:%02d", up / 3600, up / 60 % 60, up % 60);
+        fb_text(&f, 752, 1, line, 1, GREY, TRANSPARENT);
     }
-    snprintf (line, sizeof (line), "%.30s  MUTE hides",
-              sdk_app_dir[0] ? (strrchr (sdk_app_dir, '/') ? strrchr (sdk_app_dir, '/') + 1 :
+    snprintf(line, sizeof(line), "%.30s  MUTE hides",
+              sdk_app_dir[0] ? (strrchr(sdk_app_dir, '/') ? strrchr(sdk_app_dir, '/') + 1 :
                                 sdk_app_dir) : "(U-Boot go)");
-    fb_text (&f, 872, 1, line, 1, WHITE, TRANSPARENT);
+    fb_text(&f, 872, 1, line, 1, WHITE, TRANSPARENT);
 }
 
 static int input_ready;
@@ -699,13 +807,88 @@ static u32 press_ms;                /* when the held remote button went down */
  * count once the button has been held this long; then they auto-repeat. */
 #define KEY_REPEAT_DELAY_MS 400
 
-int sdk_key_poll (struct sdk_key *k) {
+/* ---- satellite box front panel ---- */
+
+/* What this program last wrote; the panel keeps showing it after an app
+ * exits, so the launcher calls sdk_panel_invalidate () after each app. */
+static char panel_text[4] = { 1 };          /* never equal to a real text */
+static int panel_led_on = -1;
+
+void sdk_panel_invalidate(void) {
+    panel_text[0] = 1;
+    panel_led_on = -1;
+}
+
+/* Only writes when the text changes (apps may call it every frame) */
+void sdk_panel_show(const char *s) {
+    if (sdk_box_sat && strncmp(panel_text, s, 3) != 0) {
+        strncpy(panel_text, s, 3);
+        fd650_show(s);
+    }
+}
+
+/* Only writes when the state changes (players call it every loop) */
+void sdk_panel_led(int on) {
+    on = on != 0;
+    if (sdk_box_sat && on != panel_led_on) {
+        panel_led_on = on;
+        fd650_led(on);
+    }
+}
+
+#define FP_POLL_MS      30          /* one I2C read of the key register */
+#define FP_REPEAT_MS    120         /* auto-repeat step while held */
+
+static const struct { unsigned char code; short btn; } fp_btn[] = {
+    { FD650_KEY_MENU, BTN_MENU }, { FD650_KEY_OK, BTN_OK },
+    { FD650_KEY_VOLDOWN, BTN_LEFT }, { FD650_KEY_VOLUP, BTN_RIGHT },
+    { FD650_KEY_CHDOWN, BTN_DOWN }, { FD650_KEY_CHUP, BTN_UP },
+};
+static int fp_held;                 /* FD650 code of the held button, 0 = none */
+static u32 fp_poll_ms, fp_press_ms, fp_repeat_ms;
+
+/* 1 = a front button went down (*repeat = 0) or auto-repeats (*repeat = 1) */
+static int fp_poll(int *btn, int *repeat) {
+    u32 now = ub_get_timer(0);
+    unsigned int i;
+    int code;
+
+    if (now - fp_poll_ms < FP_POLL_MS) {
+        return 0;
+    }
+    fp_poll_ms = now;
+    code = fd650_key();
+    if (code < 0 || !(code & FD650_KEY_PRESSED)) {
+        fp_held = 0;
+        return 0;
+    }
+    code &= ~FD650_KEY_PRESSED;
+    if (code != fp_held) {
+        fp_held = code;
+        fp_press_ms = fp_repeat_ms = now;
+        *repeat = 0;
+    } else if (now - fp_press_ms >= KEY_REPEAT_DELAY_MS && now - fp_repeat_ms >= FP_REPEAT_MS) {
+        fp_repeat_ms = now;
+        *repeat = 1;
+    } else {
+        return 0;
+    }
+    for (i = 0; i < sizeof(fp_btn) / sizeof(fp_btn[0]); i++) {
+        if (fp_btn[i].code == code) {
+            *btn = fp_btn[i].btn;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int sdk_key_poll(struct sdk_key *k) {
     struct ir_event ev;
 
-    sdk_overlay_tick ();
+    sdk_overlay_tick();
 
     if (!input_ready) {
-        ir_init ();
+        ir_init();
         input_ready = 1;
     }
     k->btn = BTN_NONE;
@@ -713,15 +896,15 @@ int sdk_key_poll (struct sdk_key *k) {
     k->repeat = 0;
     k->remote = 0;
 
-    if (ir_poll (&ev) && ev.user == IR_USER_STOCK) {
+    if (ir_poll(&ev) && ev.user == IR_USER_STOCK) {
         unsigned int i;
 
-        if (saver_key (ev.repeat)) {
+        if (saver_key(ev.repeat)) {
             return 0;
         }
-        for (i = 0; i < sizeof (ir_btn) / sizeof (ir_btn[0]); i++) {
+        for (i = 0; i < sizeof(ir_btn) / sizeof(ir_btn[0]); i++) {
             if (ir_btn[i].ir == ev.key) {
-                u32 now = ub_get_timer (0);
+                u32 now = ub_get_timer(0);
 
                 if (!ev.repeat) {
                     press_ms = now;
@@ -731,7 +914,7 @@ int sdk_key_poll (struct sdk_key *k) {
                 if (ir_btn[i].btn == BTN_MUTE) {
                     if (!ev.repeat) {
                         sdk_overlay_on = !sdk_overlay_on;    /* MUTE: overlay on / off */
-                        sdk_overlay_tick ();
+                        sdk_overlay_tick();
                     }
                     return 0;
                 }
@@ -743,22 +926,35 @@ int sdk_key_poll (struct sdk_key *k) {
         }
         return 0;
     }
-    if (ub_tstc ()) {
-        int c = ub_getc ();
+    if (sdk_box_sat) {
+        int btn, rep;
 
-        if (saver_key (0)) {
+        if (fp_poll(&btn, &rep)) {
+            if (saver_key(rep)) {
+                return 0;
+            }
+            k->btn = btn;
+            k->repeat = rep;
+            k->remote = 1;
+            return 1;
+        }
+    }
+    if (ub_tstc()) {
+        int c = ub_getc();
+
+        if (saver_key(0)) {
             return 0;
         }
         k->ch = c;
         if (c == 27) {                  /* ESC [ A-D = arrows, ESC alone = back */
-            u32 t = ub_get_timer (0);
+            u32 t = ub_get_timer(0);
 
-            while (!ub_tstc () && ub_get_timer (t) < 5) {
+            while (!ub_tstc() && ub_get_timer(t) < 5) {
             }
-            if (ub_tstc () && ub_getc () == '[') {
-                while (!ub_tstc () && ub_get_timer (t) < 10) {
+            if (ub_tstc() && ub_getc() == '[') {
+                while (!ub_tstc() && ub_get_timer(t) < 10) {
                 }
-                c = ub_tstc () ? ub_getc () : 0;
+                c = ub_tstc() ? ub_getc() : 0;
                 k->btn = c == 'A' ? BTN_UP : c == 'B' ? BTN_DOWN :
                          c == 'C' ? BTN_RIGHT : c == 'D' ? BTN_LEFT : BTN_NONE;
                 k->ch = 0;
@@ -787,12 +983,12 @@ int sdk_key_poll (struct sdk_key *k) {
     return 0;
 }
 
-const char *sdk_btn_name (int btn) {
+const char *sdk_btn_name(int btn) {
     static const char *names[] = {
         "NONE", "UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK", "HOME", "MENU", "INFO", "POWER",
         "RED", "GREEN", "YELLOW", "BLUE", "PLAY", "PAUSE", "STOP", "NEXT", "MUTE",
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     };
 
-    return (btn >= 0 && btn < (int) (sizeof (names) / sizeof (names[0]))) ? names[btn] : "?";
+    return (btn >= 0 && btn < (int) (sizeof(names) / sizeof(names[0]))) ? names[btn] : "?";
 }

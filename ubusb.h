@@ -42,10 +42,10 @@
 #define UB_DEV_PID(d)           (*(volatile unsigned short *) ((char *) (d) + 266))
 #define UB_DEV_STATUS(d)        (*(volatile u32 *) ((char *) (d) + 1300))
 
-u32 ub_target __attribute__ ((used));
+u32 ub_target __attribute__((used));
 extern char ub_thunk[];     /* asm below; called through the typedefs */
 
-__asm__ (
+__asm__(
     ".text\n"
     ".globl ub_thunk\n"
     ".set push\n"
@@ -58,57 +58,57 @@ __asm__ (
     ".set pop\n");
 
 typedef void *(*ub_get_dev_t) (int index);
-typedef int (*ub_bulk_t) (void *dev, u32 pipe, void *data, int len, int *actual, int timeout);
-typedef int (*ub_control_t) (void *dev, u32 pipe, u32 request, u32 type, u32 value,
+typedef int(*ub_bulk_t) (void *dev, u32 pipe, void *data, int len, int *actual, int timeout);
+typedef int(*ub_control_t) (void *dev, u32 pipe, u32 request, u32 type, u32 value,
                              u32 index, void *data, u32 size, int timeout);
 
-static inline void *ub_usb_dev (int index) {
-    const struct ub_build *b = ub_build ();
+static inline void *ub_usb_dev(int index) {
+    const struct ub_build *b = ub_build();
 
     if (!b) {
         return 0;
     }
-    ub_target = b->usb_get_dev_index + ub_reloc_off ();
+    ub_target = b->usb_get_dev_index + ub_reloc_off();
     return ((ub_get_dev_t) (void *) ub_thunk) (index);
 }
 
-static inline u32 ub_pipe (void *dev, u32 type, u32 ep) {
-    return (type << 30) | ((u32) UB_DEV_SPEED (dev) << 26) | ((ep & 0x0f) << 15) |
-           ((u32) UB_DEV_DEVNUM (dev) << 8) | (ep & UB_DIR_IN) | (u32) UB_DEV_MPS (dev);
+static inline u32 ub_pipe(void *dev, u32 type, u32 ep) {
+    return (type << 30) | ((u32) UB_DEV_SPEED(dev) << 26) | ((ep & 0x0f) << 15) |
+           ((u32) UB_DEV_DEVNUM(dev) << 8) | (ep & UB_DIR_IN) | (u32) UB_DEV_MPS(dev);
 }
 
-static inline int ub_bulk (void *dev, u32 ep, void *data, int len, int *actual, int timeout) {
-    const struct ub_build *b = ub_build ();
+static inline int ub_bulk(void *dev, u32 ep, void *data, int len, int *actual, int timeout) {
+    const struct ub_build *b = ub_build();
 
     if (!b) {
         return -1;
     }
-    ub_target = b->usb_bulk_msg + ub_reloc_off ();
-    return ((ub_bulk_t) (void *) ub_thunk) (dev, ub_pipe (dev, UB_PIPE_BULK, ep), data, len,
+    ub_target = b->usb_bulk_msg + ub_reloc_off();
+    return ((ub_bulk_t) (void *) ub_thunk) (dev, ub_pipe(dev, UB_PIPE_BULK, ep), data, len,
                                    actual, timeout);
 }
 
 /* Control transfer on endpoint 0; type bit 7 (0x80) = device to host */
-static inline int ub_control (void *dev, u32 request, u32 type, u32 value, u32 index,
+static inline int ub_control(void *dev, u32 request, u32 type, u32 value, u32 index,
                               void *data, u32 size, int timeout) {
-    const struct ub_build *b = ub_build ();
+    const struct ub_build *b = ub_build();
 
     if (!b) {
         return -1;
     }
-    ub_target = b->usb_control_msg + ub_reloc_off ();
-    return ((ub_control_t) (void *) ub_thunk) (dev, ub_pipe (dev, UB_PIPE_CONTROL, type & UB_DIR_IN),
+    ub_target = b->usb_control_msg + ub_reloc_off();
+    return ((ub_control_t) (void *) ub_thunk) (dev, ub_pipe(dev, UB_PIPE_CONTROL, type & UB_DIR_IN),
                                       request, type, value, index, data, size, timeout);
 }
 
 /* First enumerated device with this VID/PID, or 0 */
-static inline void *ub_find_device (u32 vid, u32 pid) {
+static inline void *ub_find_device(u32 vid, u32 pid) {
     int i;
 
     for (i = 0; i < UB_USB_MAX_DEVICE; i++) {
-        void *dev = ub_usb_dev (i);
+        void *dev = ub_usb_dev(i);
 
-        if (dev && UB_DEV_VID (dev) == vid && UB_DEV_PID (dev) == pid) {
+        if (dev && UB_DEV_VID(dev) == vid && UB_DEV_PID(dev) == pid) {
             return dev;
         }
     }

@@ -39,39 +39,39 @@ static const u32 expect_irkey[2] = { 0x27bdffe8, 0x3402fe01 };
 #define IPC_SITE    0x801a7e4c
 static const u32 expect_ipc[2] = { 0x27bdffd0, 0xafb40024 };
 
-static void cache_sync (u32 start, u32 len) {
+static void cache_sync(u32 start, u32 len) {
     u32 a;
 
     for (a = start & ~31u; a < start + len; a += 32) {
-        __asm__ volatile (
+        __asm__ volatile(
             "cache 0x15, 0(%0)\n\t"     /* D: hit writeback invalidate */
             "cache 0x10, 0(%0)"         /* I: hit invalidate */
             : : "r" (a) : "memory");
     }
-    __asm__ volatile ("sync" : : : "memory");
+    __asm__ volatile("sync" : : : "memory");
 }
 
-static int hook_present (void) {
-    if (REG32 (HOOK_CODE + 12) != HOOK_MAGIC) {
-        printf ("hookpatch: hook binary not found at 0x%08x\n", HOOK_CODE);
+static int hook_present(void) {
+    if (REG32(HOOK_CODE + 12) != HOOK_MAGIC) {
+        printf("hookpatch: hook binary not found at 0x%08x\n", HOOK_CODE);
         return 0;
     }
     return 1;
 }
 
 /* Check two firmware words, then replace them (keep = leave word 1 alone) */
-static int patch_two (u32 addr, const u32 *want, u32 new0, u32 new1, int keep1, const char *name) {
+static int patch_two(u32 addr, const u32 *want, u32 new0, u32 new1, int keep1, const char *name) {
     volatile u32 *site = (volatile u32 *) addr;
     int i;
 
     for (i = 0; i < 2; i++) {
         if (site[i] != want[i]) {
-            printf ("hookpatch: firmware not found at 0x%08x (word %d = %08x, want %08x)\n",
+            printf("hookpatch: firmware not found at 0x%08x (word %d = %08x, want %08x)\n",
                     addr + i * 4, i, site[i], want[i]);
             return 1;
         }
     }
-    if (!hook_present ()) {
+    if (!hook_present()) {
         return 1;
     }
 
@@ -80,51 +80,51 @@ static int patch_two (u32 addr, const u32 *want, u32 new0, u32 new1, int keep1, 
         site[1] = new1;
     }
 
-    cache_sync (HOOK_CODE, HOOK_SIZE);
-    cache_sync (addr, 8);
+    cache_sync(HOOK_CODE, HOOK_SIZE);
+    cache_sync(addr, 8);
 
-    printf ("hookpatch: 0x%08x (%s) now calls 0x%08x. Start firmware with: go 0x80008000\n",
+    printf("hookpatch: 0x%08x (%s) now calls 0x%08x. Start firmware with: go 0x80008000\n",
             addr, name, HOOK_CODE);
     return 0;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     volatile u32 *site = (volatile u32 *) HOOK_SITE;
     int i;
 
-    if (argc > 1 && strcmp (argv[1], "uio") == 0) {
+    if (argc > 1 && strcmp(argv[1], "uio") == 0) {
         /* delay slot (a0 = string) kept */
-        return patch_two (UIO_SITE, expect_uio, JAL (HOOK_CODE), 0, 1, "uio init end");
+        return patch_two(UIO_SITE, expect_uio, JAL(HOOK_CODE), 0, 1, "uio init end");
     }
-    if (argc > 1 && strcmp (argv[1], "ipc") == 0) {
+    if (argc > 1 && strcmp(argv[1], "ipc") == 0) {
         /* hook_entry_ipc.S re-runs the two replaced instructions */
-        return patch_two (IPC_SITE, expect_ipc, J (HOOK_CODE), 0, 0, "AV IPC send");
+        return patch_two(IPC_SITE, expect_ipc, J(HOOK_CODE), 0, 0, "AV IPC send");
     }
-    if (argc > 1 && strcmp (argv[1], "irkey") == 0) {
+    if (argc > 1 && strcmp(argv[1], "irkey") == 0) {
         /* hook_entry_irkey.S re-runs the two replaced instructions */
-        return patch_two (IRKEY_SITE, expect_irkey, J (HOOK_CODE), 0, 0, "IR key callback");
+        return patch_two(IRKEY_SITE, expect_irkey, J(HOOK_CODE), 0, 0, "IR key callback");
     }
 
     for (i = 0; i < 3; i++) {
         if (site[i] != expect[i]) {
-            printf ("hookpatch: firmware not found at 0x%08x (word %d = %08x, want %08x)\n",
+            printf("hookpatch: firmware not found at 0x%08x (word %d = %08x, want %08x)\n",
                     HOOK_SITE + i * 4, i, site[i], expect[i]);
-            printf ("  run 'loadimg 1 lzma 0x300000 0x81500000 0x80008000' first\n");
+            printf("  run 'loadimg 1 lzma 0x300000 0x81500000 0x80008000' first\n");
             return 1;
         }
     }
-    if (!hook_present ()) {
+    if (!hook_present()) {
         return 1;
     }
 
-    site[0] = JAL (HOOK_CODE);
+    site[0] = JAL(HOOK_CODE);
     site[1] = 0;    /* nop (delay slot) */
     site[2] = 0;    /* nop */
 
-    cache_sync (HOOK_CODE, HOOK_SIZE);
-    cache_sync (HOOK_SITE, 12);
+    cache_sync(HOOK_CODE, HOOK_SIZE);
+    cache_sync(HOOK_SITE, 12);
 
-    printf ("hookpatch: 0x%08x now calls 0x%08x. Start firmware with: go 0x80008000\n",
+    printf("hookpatch: 0x%08x now calls 0x%08x. Start firmware with: go 0x80008000\n",
             HOOK_SITE, HOOK_CODE);
     return 0;
 }

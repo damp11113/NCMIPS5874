@@ -21,27 +21,27 @@ typedef struct block {
 
 static block_t *heap_head;
 
-static void heap_init (void) {
+static void heap_init(void) {
     heap_head = (block_t *) HEAP_START;
-    heap_head->size = HEAP_END - HEAP_START - sizeof (block_t);
+    heap_head->size = HEAP_END - HEAP_START - sizeof(block_t);
     heap_head->used = 0;
     heap_head->next = 0;
 }
 
-void *gfx_nc5874_malloc (unsigned int n) {
+void *gfx_nc5874_malloc(unsigned int n) {
     block_t *b;
 
     if (!heap_head) {
-        heap_init ();
+        heap_init();
     }
     n = (n + 15u) & ~15u;
     for (b = heap_head; b; b = b->next) {
         if (b->used || b->size < n) {
             continue;
         }
-        if (b->size >= n + sizeof (block_t) + 64u) {       /* split */
+        if (b->size >= n + sizeof(block_t) + 64u) {       /* split */
             block_t *rest = (block_t *) ((char *) (b + 1) + n);
-            rest->size = b->size - n - sizeof (block_t);
+            rest->size = b->size - n - sizeof(block_t);
             rest->used = 0;
             rest->next = b->next;
             b->next = rest;
@@ -50,11 +50,11 @@ void *gfx_nc5874_malloc (unsigned int n) {
         b->used = 1;
         return b + 1;
     }
-    printf ("gfx heap: out of memory (%u bytes)\n", n);
+    printf("gfx heap: out of memory (%u bytes)\n", n);
     return 0;
 }
 
-void gfx_nc5874_free (void *p) {
+void gfx_nc5874_free(void *p) {
     block_t *b;
 
     if (!p) {
@@ -63,16 +63,16 @@ void gfx_nc5874_free (void *p) {
     ((block_t *) p - 1)->used = 0;
     for (b = heap_head; b; b = b->next) {               /* coalesce neighbours */
         while (!b->used && b->next && !b->next->used) {
-            b->size += sizeof (block_t) + b->next->size;
+            b->size += sizeof(block_t) + b->next->size;
             b->next = b->next->next;
         }
     }
 }
 
-void gfx_nc5874_log (const char *s) {
-    puts (s);
+void gfx_nc5874_log(const char *s) {
+    puts(s);
 }
 
-unsigned int gfx_nc5874_millis (void) {
-    return (unsigned int) get_timer (0);
+unsigned int gfx_nc5874_millis(void) {
+    return (unsigned int) get_timer(0);
 }

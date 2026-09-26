@@ -79,3 +79,6 @@ vk.dis
 # Satellite box: vendor firmware strings / disassembly
 sat/*_strings.txt
 *.dis
+
+# SSerHial: serial <-> SSH hub (PyserSSH copy, host key, logs); local tool, not part of the project
+SSerHial/

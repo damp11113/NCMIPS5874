@@ -15,46 +15,46 @@
 #include "wlan.h"
 #include "netstack.h"
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     u32 t;
     int i;
 
     if (argc < 4) {
-        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [data=be]\n");
+        printf("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr> [data=be]\n");
         return 1;
     }
     for (i = 4; i < argc; i++) {
-        if (!memcmp (argv[i], "data=be", 7)) {
+        if (!memcmp(argv[i], "data=be", 7)) {
             wlan_data_be = 1;
-            printf ("data frames on the BE queue / EP 0x03\n");
+            printf("data frames on the BE queue / EP 0x03\n");
         }
     }
-    if (wlan_join ((const unsigned char *) parse_hex (argv[1]), parse_hex (argv[2]),
-                   (const char *) parse_hex (argv[3])) < 0) {
+    if (wlan_join((const unsigned char *) parse_hex(argv[1]), parse_hex(argv[2]),
+                   (const char *) parse_hex(argv[3])) < 0) {
         return 1;
     }
-    wlan_install_keys ();
+    wlan_install_keys();
 
-    if (dhcp_run (4) < 0) {
-        printf ("no DHCP answer. frames rx %d (data %d, not decrypted %d), data tx %d\n",
+    if (dhcp_run(4) < 0) {
+        printf("no DHCP answer. frames rx %d (data %d, not decrypted %d), data tx %d\n",
                 wlan_rx_frames, wlan_rx_data, wlan_rx_undecrypted, wlan_tx_data);
         return 1;
     }
-    arp_send (1, 0, net_gw);                    /* learn the router's MAC */
-    print_ip ("\nREADY: ping ", net_ip);
-    printf (" from your PC (host name %s). 'q' stops.\n\n", NET_HOSTNAME);
+    arp_send(1, 0, net_gw);                    /* learn the router's MAC */
+    print_ip("\nREADY: ping ", net_ip);
+    printf(" from your PC (host name %s). 'q' stops.\n\n", NET_HOSTNAME);
 
     for (t = 0; state == S_DONE; t += 10) {
-        wlan_poll (10000, net_rx);
-        printf ("[%4d s] pings answered %d, ARP replies %d, IP rx %d, data rx %d / tx %d, "
+        wlan_poll(10000, net_rx);
+        printf("[%4d s] pings answered %d, ARP replies %d, IP rx %d, data rx %d / tx %d, "
                 "not decrypted %d\n", t + 10, net_pings, net_arp_replies, net_ip_rx,
                 wlan_rx_data, wlan_tx_data, wlan_rx_undecrypted);
-        if (tstc () && getc () == 'q') {
+        if (tstc() && getc() == 'q') {
             break;
         }
     }
     if (state != S_DONE) {
-        printf ("lost the connection\n");
+        printf("lost the connection\n");
         return 1;
     }
     return 0;

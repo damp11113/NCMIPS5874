@@ -45,23 +45,23 @@ static const struct ub_build ub_builds[] = {
       0, 0, UB_BOX_SAT },
 };
 
-static inline u32 ub_reloc_off (void) {
+static inline u32 ub_reloc_off(void) {
     u32 gd;
 
-    __asm__ volatile ("move %0, $26" : "=r" (gd));
-    return REG32 (gd + 0x14);
+    __asm__ volatile("move %0, $26" : "=r" (gd));
+    return REG32(gd + 0x14);
 }
 
 /* The running U-Boot build, or NULL if unknown */
-static __attribute__ ((unused)) const struct ub_build *ub_build (void) {
+static __attribute__((unused)) const struct ub_build *ub_build(void) {
     static const struct ub_build *found;
     u32 off, i;
 
     if (found) {
         return found;
     }
-    off = ub_reloc_off ();
-    for (i = 0; i < sizeof (ub_builds) / sizeof (ub_builds[0]); i++) {
+    off = ub_reloc_off();
+    for (i = 0; i < sizeof(ub_builds) / sizeof(ub_builds[0]); i++) {
         const char *want = ub_builds[i].version;
         const char *have = (const char *) (ub_builds[i].version_link + off);
 

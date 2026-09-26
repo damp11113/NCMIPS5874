@@ -41,6 +41,13 @@ for inf in "$ROOT"/ncapps/APPS/*/*.INF; do
     app=$(basename "$(dirname "$inf")")
     put "$inf" "$NC/APPS/$app/$(basename "$inf")"
     mkdir -p "$NC/APPSDATA/$app"
+    # App config (sdk_config_*): written on the box like SETTINGS.TXT, so
+    # only created when missing or broken, never overwritten
+    cfg=$NC/APPSDATA/$app/CONFIG.TXT
+    if [ ! -f "$cfg" ] || [ "$(wc -c < "$cfg")" != 512 ]; then
+        rm -f "$cfg"
+        put "$ROOT/ncapps/CONFIG.TXT" "$cfg"
+    fi
 done
 
 put "$ROOT/doom/doom.bin" "$NC/APPS/DOOM/APP.BIN"

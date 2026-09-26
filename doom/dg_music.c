@@ -68,13 +68,13 @@ static unsigned char vol_atten[128];    /* amplitude 0-127 -> TL steps (0.75 dB)
 
 static const unsigned char op_off[NUM_VOICES] = { 0, 1, 2, 8, 9, 10, 16, 17, 18 };
 
-static int le16 (const unsigned char *p) {
+static int le16(const unsigned char *p) {
     return p[0] | (p[1] << 8);
 }
 
 /* ---- tables ---- */
 
-static void build_tables (void) {
+static void build_tables(void) {
     double f = 261.6255653, r, x = 0.6931471805599453 / 384;   /* ln 2 / 384 */
     double amp = 127.0;
     int i, a;
@@ -97,17 +97,17 @@ static void build_tables (void) {
 
 /* ---- OPL voice programming ---- */
 
-static void write_op (int voice, int which, const unsigned char *op, int level) {
+static void write_op(int voice, int which, const unsigned char *op, int level) {
     int off = op_off[voice] + (which ? 3 : 0);
 
-    opl_write (0x20 + off, op[0]);
-    opl_write (0x60 + off, op[1]);
-    opl_write (0x80 + off, op[2]);
-    opl_write (0xe0 + off, op[3]);
-    opl_write (0x40 + off, op[4] | level);
+    opl_write(0x20 + off, op[0]);
+    opl_write(0x60 + off, op[1]);
+    opl_write(0x80 + off, op[2]);
+    opl_write(0xe0 + off, op[3]);
+    opl_write(0x40 + off, op[4] | level);
 }
 
-static int voice_amp (const struct voice *v) {
+static int voice_amp(const struct voice *v) {
     const struct mchan *c = &chans[v->chan];
     int amp = v->velocity * c->volume / 127;
 
@@ -116,31 +116,31 @@ static int voice_amp (const struct voice *v) {
 }
 
 /* Carrier (and additive modulator) level with the voice's volume applied */
-static void set_voice_volume (int vi) {
+static void set_voice_volume(int vi) {
     struct voice *v = &voices[vi];
     const unsigned char *vo = v->ins + 4;
-    int att = vol_atten[voice_amp (v)];
+    int att = vol_atten[voice_amp(v)];
     int car = (vo[7 + 5] & 0x3f) + att;
 
     if (car > 63) {
         car = 63;
     }
-    opl_write (0x40 + op_off[vi] + 3, vo[7 + 4] | car);
+    opl_write(0x40 + op_off[vi] + 3, vo[7 + 4] | car);
     if (vo[6] & 1) {                /* additive: modulator is heard too */
         int mod = (vo[5] & 0x3f) + att;
 
-        opl_write (0x40 + op_off[vi], vo[4] | (mod > 63 ? 63 : mod));
+        opl_write(0x40 + op_off[vi], vo[4] | (mod > 63 ? 63 : mod));
     }
 }
 
-static void set_voice_pan (int vi) {
+static void set_voice_pan(int vi) {
     int pan = chans[voices[vi].chan].pan;       /* 0 left .. 64 centre .. 127 right */
 
     pan_l[vi] = pan <= 64 ? 256 : (127 - pan) * 256 / 63;
     pan_r[vi] = pan >= 64 ? 256 : pan * 256 / 64;
 }
 
-static void set_voice_freq (int vi, int key) {
+static void set_voice_freq(int vi, int key) {
     struct voice *v = &voices[vi];
     int p = v->play_note * 32 + (chans[v->chan].bend - 128) / 2;   /* 1/32 semitone */
     int k, oct, block, fnum;
@@ -167,21 +167,21 @@ static void set_voice_freq (int vi, int key) {
     if (fnum > 1023) {
         fnum = 1023;
     }
-    opl_write (0xa0 + vi, fnum & 0xff);
-    opl_write (0xb0 + vi, (key ? 0x20 : 0) | (block << 2) | (fnum >> 8));
+    opl_write(0xa0 + vi, fnum & 0xff);
+    opl_write(0xb0 + vi, (key ? 0x20 : 0) | (block << 2) | (fnum >> 8));
 }
 
-static void voice_off (int vi) {
+static void voice_off(int vi) {
     struct voice *v = &voices[vi];
 
     if (v->on) {
         v->on = 0;
         v->age = ++age_counter;
-        set_voice_freq (vi, 0);
+        set_voice_freq(vi, 0);
     }
 }
 
-static int alloc_voice (void) {
+static int alloc_voice(void) {
     int i, best = -1;
     unsigned best_age = ~0u;
 
@@ -200,11 +200,11 @@ static int alloc_voice (void) {
             best_age = voices[i].age;
         }
     }
-    voice_off (best);
+    voice_off(best);
     return best;
 }
 
-static void note_on (int chan, int note, int vel) {
+static void note_on(int chan, int note, int vel) {
     const unsigned char *ins, *vo;
     struct voice *v;
     int vi, play;
@@ -218,17 +218,17 @@ static void note_on (int chan, int note, int vel) {
         ins = genmidi + 8 + chans[chan].program * 36;
     }
     vo = ins + 4;
-    play = (le16 (ins) & 1) ? ins[3] : note;
-    play += (short) le16 (vo + 14);
+    play = (le16(ins) & 1) ? ins[3] : note;
+    play += (short) le16(vo + 14);
     if (play < 0) {
         play = 0;
     } else if (play > 127) {
         play = 127;
     }
 
-    vi = alloc_voice ();
+    vi = alloc_voice();
     v = &voices[vi];
-    set_voice_freq (vi, 0);                     /* key off before re-programming */
+    set_voice_freq(vi, 0);                     /* key off before re-programming */
     v->on = 1;
     v->chan = chan;
     v->note = note;
@@ -237,51 +237,51 @@ static void note_on (int chan, int note, int vel) {
     v->age = ++age_counter;
     v->ins = ins;
 
-    write_op (vi, 0, vo, vo[5] & 0x3f);
-    write_op (vi, 1, vo + 7, vo[7 + 5] & 0x3f);
-    opl_write (0xc0 + vi, vo[6]);
-    set_voice_volume (vi);
-    set_voice_pan (vi);
-    set_voice_freq (vi, 1);
+    write_op(vi, 0, vo, vo[5] & 0x3f);
+    write_op(vi, 1, vo + 7, vo[7 + 5] & 0x3f);
+    opl_write(0xc0 + vi, vo[6]);
+    set_voice_volume(vi);
+    set_voice_pan(vi);
+    set_voice_freq(vi, 1);
 }
 
-static void note_off (int chan, int note) {
+static void note_off(int chan, int note) {
     int i;
 
     for (i = 0; i < NUM_VOICES; i++) {
         if (voices[i].on && voices[i].chan == chan && voices[i].note == note) {
-            voice_off (i);
+            voice_off(i);
         }
     }
 }
 
-static void all_notes_off (int chan) {
+static void all_notes_off(int chan) {
     int i;
 
     for (i = 0; i < NUM_VOICES; i++) {
         if (chan < 0 || voices[i].chan == chan) {
-            voice_off (i);
+            voice_off(i);
         }
     }
 }
 
-static void update_chan (int chan, int what) {
+static void update_chan(int chan, int what) {
     int i;
 
     for (i = 0; i < NUM_VOICES; i++) {
         if (voices[i].on && voices[i].chan == chan) {
             if (what == 0) {
-                set_voice_volume (i);
+                set_voice_volume(i);
             } else if (what == 1) {
-                set_voice_pan (i);
+                set_voice_pan(i);
             } else {
-                set_voice_freq (i, 1);
+                set_voice_freq(i, 1);
             }
         }
     }
 }
 
-static void reset_chans (void) {
+static void reset_chans(void) {
     int i;
 
     for (i = 0; i < 16; i++) {
@@ -294,52 +294,52 @@ static void reset_chans (void) {
     }
 }
 
-static void silence (void) {
+static void silence(void) {
     int i;
 
     for (i = 0; i < NUM_VOICES; i++) {
-        voice_off (i);
+        voice_off(i);
     }
 }
 
 /* ---- score ---- */
 
-static int next_byte (void) {
+static int next_byte(void) {
     return mus_pos < score_end ? *mus_pos++ : 0;
 }
 
 /* Run events until one asks for a delay; returns 0 at score end */
-static int run_events (void) {
+static int run_events(void) {
     for (;;) {
         int ev, type, chan, b, last;
 
         if (mus_pos >= score_end) {
             return 0;
         }
-        ev = next_byte ();
+        ev = next_byte();
         type = (ev >> 4) & 7;
         chan = ev & 15;
         last = ev & 0x80;
 
         switch (type) {
         case 0:
-            note_off (chan, next_byte () & 0x7f);
+            note_off(chan, next_byte() & 0x7f);
             break;
         case 1:
-            b = next_byte ();
+            b = next_byte();
             if (b & 0x80) {
-                chans[chan].last_vel = next_byte () & 0x7f;
+                chans[chan].last_vel = next_byte() & 0x7f;
             }
-            note_on (chan, b & 0x7f, chans[chan].last_vel);
+            note_on(chan, b & 0x7f, chans[chan].last_vel);
             break;
         case 2:
-            chans[chan].bend = next_byte ();
-            update_chan (chan, 2);
+            chans[chan].bend = next_byte();
+            update_chan(chan, 2);
             break;
         case 3:
-            b = next_byte ();
+            b = next_byte();
             if (b == 10 || b == 11) {
-                all_notes_off (chan);
+                all_notes_off(chan);
             } else if (b == 14) {
                 chans[chan].volume = 100;
                 chans[chan].expression = 127;
@@ -348,21 +348,21 @@ static int run_events (void) {
             }
             break;
         case 4:
-            b = next_byte ();
+            b = next_byte();
             {
-                int val = next_byte () & 0x7f;
+                int val = next_byte() & 0x7f;
 
                 if (b == 0) {
                     chans[chan].program = val;
                 } else if (b == 3) {
                     chans[chan].volume = val;
-                    update_chan (chan, 0);
+                    update_chan(chan, 0);
                 } else if (b == 4) {
                     chans[chan].pan = val;
-                    update_chan (chan, 1);
+                    update_chan(chan, 1);
                 } else if (b == 5) {
                     chans[chan].expression = val;
-                    update_chan (chan, 0);
+                    update_chan(chan, 0);
                 }
             }
             break;
@@ -377,7 +377,7 @@ static int run_events (void) {
             int d = 0;
 
             do {
-                b = next_byte ();
+                b = next_byte();
                 d = (d << 7) | (b & 0x7f);
             } while ((b & 0x80) && mus_pos < score_end);
             if (d > 0) {
@@ -388,13 +388,13 @@ static int run_events (void) {
     }
 }
 
-static void restart (void) {
+static void restart(void) {
     mus_pos = score;
     delay_ticks = 0;
-    reset_chans ();
+    reset_chans();
 }
 
-static void music_tick (void) {
+static void music_tick(void) {
     int restarts = 0;
 
     if (!playing || paused) {
@@ -404,10 +404,10 @@ static void music_tick (void) {
         return;
     }
     while (delay_ticks == 0) {
-        if (!run_events ()) {
-            silence ();
+        if (!run_events()) {
+            silence();
             if (looping && restarts++ == 0) {
-                restart ();     /* a score without any delay stops below */
+                restart();     /* a score without any delay stops below */
                 continue;
             }
             playing = 0;
@@ -419,16 +419,16 @@ static void music_tick (void) {
 u32 dg_music_ticks;                 /* OPL + score time (CP0 Count), for dg_debug.c */
 
 /* CP0 Count (0 when built for the PC test) */
-static inline u32 count_now (void) {
+static inline u32 count_now(void) {
     u32 v = 0;
 
 #ifdef __mips__
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
 #endif
     return v;
 }
 
-int dg_music_voices (void) {
+int dg_music_voices(void) {
     int i, n = 0;
 
     for (i = 0; i < NUM_VOICES; i++) {
@@ -437,19 +437,19 @@ int dg_music_voices (void) {
     return n;
 }
 
-int dg_music_playing (void) {
+int dg_music_playing(void) {
     return playing && !paused;
 }
 
 /* Add n samples of music to the mixer's int buffers (dg_sound.c) */
-void dg_music_render (int *left, int *right, int n) {
+void dg_music_render(int *left, int *right, int n) {
     u32 t0, t1;
     int i;
 
     if (!genmidi) {
         return;
     }
-    t0 = count_now ();
+    t0 = count_now();
     while (n > 0) {
         /* samples until the next 1/140 s tick */
         int seg = (RATE - tick_acc + TICK_HZ - 1) / TICK_HZ;
@@ -464,9 +464,9 @@ void dg_music_render (int *left, int *right, int n) {
             while (done < seg) {
                 int m = seg - done > 256 ? 256 : seg - done;
 
-                memset (tmp_l, 0, m * sizeof (int));
-                memset (tmp_r, 0, m * sizeof (int));
-                opl_render (tmp_l, tmp_r, m, pan_l, pan_r);
+                memset(tmp_l, 0, m * sizeof(int));
+                memset(tmp_r, 0, m * sizeof(int));
+                opl_render(tmp_l, tmp_r, m, pan_l, pan_r);
                 for (i = 0; i < m; i++) {
                     left[done + i] += tmp_l[i] * MUSIC_GAIN;
                     right[done + i] += tmp_r[i] * MUSIC_GAIN;
@@ -480,106 +480,106 @@ void dg_music_render (int *left, int *right, int n) {
         tick_acc += seg * TICK_HZ;
         if (tick_acc >= RATE) {
             tick_acc -= RATE;
-            music_tick ();
+            music_tick();
         }
     }
-    t1 = count_now ();
+    t1 = count_now();
     dg_music_ticks += t1 - t0;
 }
 
 /* ---- DG_music_module ---- */
 
-static boolean mus_init (void) {
-    int lump = W_CheckNumForName ("GENMIDI");
+static boolean mus_init(void) {
+    int lump = W_CheckNumForName("GENMIDI");
 
-    if (lump < 0 || W_LumpLength (lump) < 8 + 175 * 36) {
-        printf ("dg_music: no GENMIDI lump, music off\n");
+    if (lump < 0 || W_LumpLength(lump) < 8 + 175 * 36) {
+        printf("dg_music: no GENMIDI lump, music off\n");
         return false;
     }
-    genmidi = W_CacheLumpNum (lump, PU_STATIC);
-    if (memcmp (genmidi, "#OPL_II#", 8) != 0) {
-        printf ("dg_music: bad GENMIDI lump, music off\n");
+    genmidi = W_CacheLumpNum(lump, PU_STATIC);
+    if (memcmp(genmidi, "#OPL_II#", 8) != 0) {
+        printf("dg_music: bad GENMIDI lump, music off\n");
         genmidi = 0;
         return false;
     }
-    build_tables ();
-    opl_init (RATE);
-    opl_write (0x01, 0x20);         /* waveform select on */
-    memset (voices, 0, sizeof (voices));
-    reset_chans ();
-    printf ("dg_music: OPL2 emulation, %d voices, GENMIDI instruments\n", NUM_VOICES);
+    build_tables();
+    opl_init(RATE);
+    opl_write(0x01, 0x20);         /* waveform select on */
+    memset(voices, 0, sizeof(voices));
+    reset_chans();
+    printf("dg_music: OPL2 emulation, %d voices, GENMIDI instruments\n", NUM_VOICES);
     return true;
 }
 
-static void mus_shutdown (void) {
+static void mus_shutdown(void) {
     playing = 0;
-    silence ();
+    silence();
 }
 
-static void mus_set_volume (int volume) {
+static void mus_set_volume(int volume) {
     int i;
 
     music_volume = volume < 0 ? 0 : volume > 127 ? 127 : volume;
     for (i = 0; i < NUM_VOICES; i++) {
         if (voices[i].on) {
-            set_voice_volume (i);
+            set_voice_volume(i);
         }
     }
 }
 
-static void mus_pause (void) {
+static void mus_pause(void) {
     paused = 1;
-    silence ();
+    silence();
 }
 
-static void mus_resume (void) {
+static void mus_resume(void) {
     paused = 0;
 }
 
-static void *mus_register (void *data, int len) {
+static void *mus_register(void *data, int len) {
     const unsigned char *d = data;
 
-    if (len < 16 || memcmp (d, "MUS\x1a", 4) != 0) {
-        printf ("dg_music: not a MUS lump (MIDI music is not supported)\n");
+    if (len < 16 || memcmp(d, "MUS\x1a", 4) != 0) {
+        printf("dg_music: not a MUS lump (MIDI music is not supported)\n");
         return 0;
     }
     return data;
 }
 
-static void mus_unregister (void *handle) {
+static void mus_unregister(void *handle) {
     (void) handle;
 }
 
-static void mus_play (void *handle, boolean loop) {
+static void mus_play(void *handle, boolean loop) {
     const unsigned char *d = handle;
     int len, start;
 
     if (!d || !genmidi) {
         return;
     }
-    len = le16 (d + 4);
-    start = le16 (d + 6);
-    silence ();
+    len = le16(d + 4);
+    start = le16(d + 6);
+    silence();
     song = d;
     score = d + start;
     score_end = score + len;
     looping = loop;
     paused = 0;
     tick_acc = 0;
-    restart ();
+    restart();
     playing = 1;
 }
 
-static void mus_stop (void) {
+static void mus_stop(void) {
     playing = 0;
-    silence ();
+    silence();
 }
 
-static boolean mus_is_playing (void) {
+static boolean mus_is_playing(void) {
     return playing;
 }
 
-static void mus_poll (void) {
+static void mus_poll(void) {
 }
 
 static snddevice_t music_devices[] = {
@@ -589,7 +589,7 @@ static snddevice_t music_devices[] = {
 
 music_module_t DG_music_module = {
     music_devices,
-    sizeof (music_devices) / sizeof (music_devices[0]),
+    sizeof(music_devices) / sizeof(music_devices[0]),
     mus_init,
     mus_shutdown,
     mus_set_volume,

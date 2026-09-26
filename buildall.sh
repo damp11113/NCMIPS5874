@@ -10,6 +10,7 @@ for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan
 done
 # IPTV box: stock-firmware hooks, firmware / U-Boot patches, AV core test
 H=iptv/hooks
+./buildc.sh serload.c serload 0x81f00000 || echo "FAILED serload"          # SSerHial upload loader
 ./buildc.sh $H/vdectest.c $H/vdectest || echo "FAILED vdectest"
 ./buildc.sh $H/hookpatch.c $H/hookpatch 0x82000000 || echo "FAILED hookpatch"
 ./buildc.sh $H/fwpatch.c $H/fwpatch 0x82000000 || echo "FAILED fwpatch"

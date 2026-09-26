@@ -43,87 +43,87 @@ static const u32 timing_b[8] = {   /* 0xbf140020 bit 30 set */
     0x00230004, 0x00730042, 0x00230004, 0x00390023,
 };
 
-static void dump_ranges (const char *tag) {
+static void dump_ranges(const char *tag) {
     u32 r, i;
 
-    printf ("=== IR SNAP BEGIN (%s) ===\n", tag);
+    printf("=== IR SNAP BEGIN (%s) ===\n", tag);
     for (r = 0; r < IR_NRANGES; r++) {
         for (i = 0; i < ir_ranges[r].words; i += 4) {
             u32 a = ir_ranges[r].start + i * 4;
-            printf ("S %08x: %08x %08x %08x %08x\n", a,
-                    REG32 (a), REG32 (a + 4), REG32 (a + 8), REG32 (a + 12));
+            printf("S %08x: %08x %08x %08x %08x\n", a,
+                    REG32(a), REG32(a + 4), REG32(a + 8), REG32(a + 12));
         }
     }
-    printf ("=== IR SNAP END ===\n");
+    printf("=== IR SNAP END ===\n");
 }
 
 /* Same register writes as the firmware's mode 0 setup (0x80266a34) */
-static void ir_init (u32 prescale) {
-    const u32 *t = (REG32 (CHIP_OPT) & 0x40000000) ? timing_b : timing_a;
+static void ir_init(u32 prescale) {
+    const u32 *t = (REG32(CHIP_OPT) & 0x40000000) ? timing_b : timing_a;
     u32 cfg, i;
 
-    REG32 (IR_CTRL2) &= 0x3fffffff;
+    REG32(IR_CTRL2) &= 0x3fffffff;
 
     cfg = 0x05740200 | ((prescale & 0xf) << 8);
     cfg = (cfg & ~0x60u) | 0x14;
     cfg = (cfg & ~0x02u) | 0x01;
-    REG32 (IR_CFG) = cfg;
+    REG32(IR_CFG) = cfg;
 
-    REG32 (IR_INTEN) = (REG32 (IR_INTEN) & ~0xfu) | 1;
+    REG32(IR_INTEN) = (REG32(IR_INTEN) & ~0xfu) | 1;
 
     for (i = 0; i < 8; i++) {
-        REG32 (IR_TIMING + i * 4) = t[i];
+        REG32(IR_TIMING + i * 4) = t[i];
     }
 
-    printf ("IR init: cfg %08x (read back %08x), timing table %c\n",
-            cfg, REG32 (IR_CFG), t == timing_b ? 'b' : 'a');
-    if (REG32 (IR_CFG) != cfg || REG32 (IR_TIMING) != t[0]) {
-        printf ("WARNING: writes did not stick, block may be unclocked / in reset\n");
+    printf("IR init: cfg %08x (read back %08x), timing table %c\n",
+            cfg, REG32(IR_CFG), t == timing_b ? 'b' : 'a');
+    if (REG32(IR_CFG) != cfg || REG32(IR_TIMING) != t[0]) {
+        printf("WARNING: writes did not stick, block may be unclocked / in reset\n");
     }
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     u32 prescale = 2, events = 0;
     u32 stat, data, rep;
     u32 last_stat, last_data, last_rep;
     int init = 1;
 
-    if (argc > 1 && strcmp (argv[1], "r") == 0) {
+    if (argc > 1 && strcmp(argv[1], "r") == 0) {
         init = 0;
-    } else if (argc > 2 && strcmp (argv[1], "p") == 0) {
-        prescale = parse_hex (argv[2]);
+    } else if (argc > 2 && strcmp(argv[1], "p") == 0) {
+        prescale = parse_hex(argv[2]);
     }
 
-    dump_ranges ("before");
+    dump_ranges("before");
     if (init) {
-        ir_init (prescale);
-        dump_ranges ("after init");
+        ir_init(prescale);
+        dump_ranges("after init");
     }
 
-    last_stat = REG32 (IR_STAT);
-    last_data = REG32 (IR_DATA);
-    last_rep = REG32 (IR_REP);
-    printf ("\nstat %08x data %08x rep %08x\n", last_stat, last_data, last_rep);
-    printf ("Point the remote at the box and press keys.\n");
-    printf ("STANDBY or any serial key stops.\n\n");
+    last_stat = REG32(IR_STAT);
+    last_data = REG32(IR_DATA);
+    last_rep = REG32(IR_REP);
+    printf("\nstat %08x data %08x rep %08x\n", last_stat, last_data, last_rep);
+    printf("Point the remote at the box and press keys.\n");
+    printf("STANDBY or any serial key stops.\n\n");
 
-    while (!standby_pressed () && !tstc ()) {
-        stat = REG32 (IR_STAT);
-        rep = REG32 (IR_REP);
+    while (!standby_pressed() && !tstc()) {
+        stat = REG32(IR_STAT);
+        rep = REG32(IR_REP);
         /* Data read may pop the decoder, so only read it when ready */
-        data = (stat & 1) ? REG32 (IR_DATA) : last_data;
+        data = (stat & 1) ? REG32(IR_DATA) : last_data;
 
         if (stat != last_stat) {
-            printf ("stat %08x -> %08x\n", last_stat, stat);
+            printf("stat %08x -> %08x\n", last_stat, stat);
         }
         if (!(stat & 1) && rep != last_rep) {
-            printf ("rep  %08x -> %08x (fifo %d)\n", last_rep, rep, (rep >> 8) & 0xff);
+            printf("rep  %08x -> %08x (fifo %d)\n", last_rep, rep, (rep >> 8) & 0xff);
         }
         if ((stat & 1) && (data != last_data || rep != last_rep || stat != last_stat)) {
             u32 key = (data >> 16) & 0xff;
             u32 inv = (data >> 24) & 0xff;
 
-            printf ("IR data %08x: user %04x key %02x (inv %02x %s) repeat %d fifo %d\n",
+            printf("IR data %08x: user %04x key %02x (inv %02x %s) repeat %d fifo %d\n",
                     data, data & 0xffff, key, inv,
                     (key ^ inv) == 0xff ? "ok" : "--",
                     rep & 1, (rep >> 8) & 0xff);
@@ -132,16 +132,16 @@ int main (int argc, char *argv[]) {
         last_stat = stat;
         last_data = data;
         last_rep = rep;
-        udelay (1000);
+        udelay(1000);
     }
-    if (tstc ()) {
-        getc ();
+    if (tstc()) {
+        getc();
     }
-    while (standby_pressed ()) {
-        udelay (10000);
+    while (standby_pressed()) {
+        udelay(10000);
     }
 
-    dump_ranges ("end");
-    printf ("irtest done, %d IR events\n", events);
+    dump_ranges("end");
+    printf("irtest done, %d IR events\n", events);
     return 0;
 }

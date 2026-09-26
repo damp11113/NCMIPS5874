@@ -10,16 +10,16 @@
  * C++ programs: global constructors (.init_array) run after that, before
  * main (). Global destructors never run.
  */
-int main (int argc, char *argv[]);
+int main(int argc, char *argv[]);
 
 extern unsigned int __bss_start[], __bss_end[];
-extern void (*__init_array_start[]) (void);
-extern void (*__init_array_end[]) (void);
+extern void(*__init_array_start[]) (void);
+extern void(*__init_array_end[]) (void);
 
-__attribute__ ((section (".text.start")))
-int _start (int argc, char *argv[]) {
+__attribute__((section(".text.start")))
+int _start(int argc, char *argv[]) {
     volatile unsigned int *p;
-    void (**ctor) (void);
+    void(**ctor) (void);
 
     for (p = __bss_start; p < __bss_end; p++) {
         *p = 0;
@@ -27,5 +27,5 @@ int _start (int argc, char *argv[]) {
     for (ctor = __init_array_start; ctor < __init_array_end; ctor++) {
         (*ctor) ();
     }
-    return main (argc, argv);
+    return main(argc, argv);
 }

@@ -17,10 +17,10 @@
 typedef unsigned int u32;
 #define REG32(addr)     (*(volatile u32 *) (addr))
 #define REG8(addr)      (*(volatile unsigned char *) (addr))
-int ub_getc (void);
-int ub_tstc (void);
-void ub_udelay (unsigned long us);
-unsigned long ub_get_timer (unsigned long base);
+int ub_getc(void);
+int ub_tstc(void);
+void ub_udelay(unsigned long us);
+unsigned long ub_get_timer(unsigned long base);
 #define getc        ub_getc
 #define tstc        ub_tstc
 #define udelay      ub_udelay
@@ -47,21 +47,21 @@ unsigned long ub_get_timer (unsigned long base);
  */
 extern int sdk_box_sat;
 
-static inline int box_standby_pressed (void) {
-    return sdk_box_sat ? 0 : standby_pressed ();
+static inline int box_standby_pressed(void) {
+    return sdk_box_sat ? 0 : standby_pressed();
 }
 
-static inline void box_led_green (int on) {
+static inline void box_led_green(int on) {
     if (sdk_box_sat) {
-        fd650_led (on);
+        fd650_led(on);
     } else {
-        led_green (on);
+        led_green(on);
     }
 }
 
-static inline void box_led_red (int on) {
+static inline void box_led_red(int on) {
     if (!sdk_box_sat) {
-        led_red (on);
+        led_red(on);
     }
 }
 

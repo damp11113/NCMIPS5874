@@ -25,39 +25,39 @@ static const struct range display_ranges[] = {
     { 0xbf410000, 0x68 },
 };
 
-static void dump (u32 start, u32 words) {
+static void dump(u32 start, u32 words) {
     u32 i, j;
 
     start &= ~3u;
     if (start < 0xa0000000u || start >= 0xc0000000u) {
-        printf ("skip 0x%08x: not in 0xa0000000..0xbfffffff\n", start);
+        printf("skip 0x%08x: not in 0xa0000000..0xbfffffff\n", start);
         return;
     }
-    printf ("--- 0x%08x (%d words) ---\n", start, words);
+    printf("--- 0x%08x (%d words) ---\n", start, words);
     for (i = 0; i < words; i += 4) {
         u32 v[4], any = 0;
         for (j = 0; j < 4; j++) {
-            v[j] = (i + j < words) ? REG32 (start + (i + j) * 4) : 0;
+            v[j] = (i + j < words) ? REG32(start + (i + j) * 4) : 0;
             any |= v[j];
         }
         if (any) {
-            printf ("%08x: %08x %08x %08x %08x\n", start + i * 4, v[0], v[1], v[2], v[3]);
+            printf("%08x: %08x %08x %08x %08x\n", start + i * 4, v[0], v[1], v[2], v[3]);
         }
     }
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     int i;
 
     if (argc >= 3) {
         for (i = 1; i + 1 < argc; i += 2) {
-            dump (parse_hex (argv[i]), parse_hex (argv[i + 1]));
+            dump(parse_hex(argv[i]), parse_hex(argv[i + 1]));
         }
     } else {
-        for (i = 0; i < (int) (sizeof (display_ranges) / sizeof (display_ranges[0])); i++) {
-            dump (display_ranges[i].start, display_ranges[i].words);
+        for (i = 0; i < (int) (sizeof(display_ranges) / sizeof(display_ranges[0])); i++) {
+            dump(display_ranges[i].start, display_ranges[i].words);
         }
     }
-    printf ("--- end ---\n");
+    printf("--- end ---\n");
     return 0;
 }

@@ -7,37 +7,37 @@
 #include "board.h"
 #include "ir.h"
 
-int main () {
+int main() {
     struct ir_event ev;
     u32 presses = 0, repeats = 0;
 
-    ir_init ();
-    printf ("irkeys: press remote keys (STANDBY or serial key stops)\n");
+    ir_init();
+    printf("irkeys: press remote keys (STANDBY or serial key stops)\n");
 
-    while (!standby_pressed () && !tstc ()) {
-        if (ir_poll (&ev)) {
+    while (!standby_pressed() && !tstc()) {
+        if (ir_poll(&ev)) {
             if (ev.repeat) {
-                printf ("  repeat key 0x%02x %s\n", ev.key, ir_key_name (ev.key));
+                printf("  repeat key 0x%02x %s\n", ev.key, ir_key_name(ev.key));
                 repeats++;
             } else {
-                printf ("key 0x%02x %-8s (user %04x%s)\n", ev.key, ir_key_name (ev.key), ev.user,
+                printf("key 0x%02x %-8s (user %04x%s)\n", ev.key, ir_key_name(ev.key), ev.user,
                         ev.user == IR_USER_STOCK ? "" : ", not stock remote");
-                led_green (1);
-                udelay (30000);
-                led_green (0);
+                led_green(1);
+                udelay(30000);
+                led_green(0);
                 presses++;
             }
         }
-        udelay (5000);
+        udelay(5000);
     }
-    if (tstc ()) {
-        getc ();
+    if (tstc()) {
+        getc();
     }
-    while (standby_pressed ()) {
-        udelay (10000);
+    while (standby_pressed()) {
+        udelay(10000);
     }
 
-    led_green (1);
-    printf ("irkeys done: %d presses, %d repeats\n", presses, repeats);
+    led_green(1);
+    printf("irkeys done: %d presses, %d repeats\n", presses, repeats);
     return 0;
 }

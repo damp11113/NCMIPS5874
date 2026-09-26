@@ -17,28 +17,28 @@
 #define LI_S2_4         0x24120004u
 #define LI_S2_1         0x24120001u
 
-static u32 reloc_off (void) {
+static u32 reloc_off(void) {
     u32 gd;
 
-    __asm__ volatile ("move %0, $26" : "=r" (gd));
-    return REG32 (gd + 0x14);
+    __asm__ volatile("move %0, $26" : "=r" (gd));
+    return REG32(gd + 0x14);
 }
 
-int main (int argc, char *argv[]) {
-    volatile u32 *p = (volatile u32 *) (USB_TRIES_LINK + reloc_off ());
+int main(int argc, char *argv[]) {
+    volatile u32 *p = (volatile u32 *) (USB_TRIES_LINK + reloc_off());
 
     (void) argc;
     (void) argv;
     if (*p == LI_S2_1) {
-        printf ("usbfast: already patched\n");
+        printf("usbfast: already patched\n");
         return 0;
     }
     if (*p != LI_S2_4) {
-        printf ("usbfast: unexpected instruction %08x at %08x, not patched\n", *p, (u32) p);
+        printf("usbfast: unexpected instruction %08x at %08x, not patched\n", *p, (u32) p);
         return 1;
     }
     *p = LI_S2_1;
-    __asm__ volatile ("cache 0x15, 0(%0)\n\tsync\n\tcache 0x10, 0(%0)\n\tsync" : : "r" (p) : "memory");
-    printf ("usbfast: usb start/reset now try once (%08x)\n", (u32) p);
+    __asm__ volatile("cache 0x15, 0(%0)\n\tsync\n\tcache 0x10, 0(%0)\n\tsync" : : "r" (p) : "memory");
+    printf("usbfast: usb start/reset now try once (%08x)\n", (u32) p);
     return 0;
 }

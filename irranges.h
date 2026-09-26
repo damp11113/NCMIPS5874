@@ -20,6 +20,6 @@ static const struct ir_range ir_ranges[] = {
     { 0xbf500000, 0x20 },   /* clock gates / resets */
 };
 
-#define IR_NRANGES (sizeof (ir_ranges) / sizeof (ir_ranges[0]))
+#define IR_NRANGES (sizeof(ir_ranges) / sizeof(ir_ranges[0]))
 
 #endif

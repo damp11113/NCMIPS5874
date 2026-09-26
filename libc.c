@@ -5,7 +5,7 @@
  */
 typedef unsigned int size_t;
 
-void *memcpy (void *dst, const void *src, size_t n) {
+void *memcpy(void *dst, const void *src, size_t n) {
     unsigned char *d = dst;
     const unsigned char *s = src;
 
@@ -15,7 +15,7 @@ void *memcpy (void *dst, const void *src, size_t n) {
     return dst;
 }
 
-void *memmove (void *dst, const void *src, size_t n) {
+void *memmove(void *dst, const void *src, size_t n) {
     unsigned char *d = dst;
     const unsigned char *s = src;
 
@@ -33,7 +33,7 @@ void *memmove (void *dst, const void *src, size_t n) {
     return dst;
 }
 
-void *memset (void *dst, int c, size_t n) {
+void *memset(void *dst, int c, size_t n) {
     unsigned char *d = dst;
 
     while (n--) {
@@ -42,7 +42,7 @@ void *memset (void *dst, int c, size_t n) {
     return dst;
 }
 
-int memcmp (const void *a, const void *b, size_t n) {
+int memcmp(const void *a, const void *b, size_t n) {
     const unsigned char *x = a, *y = b;
 
     for (; n; n--, x++, y++) {
@@ -53,7 +53,7 @@ int memcmp (const void *a, const void *b, size_t n) {
     return 0;
 }
 
-size_t strlen (const char *s) {
+size_t strlen(const char *s) {
     const char *p = s;
 
     while (*p) {
@@ -63,7 +63,7 @@ size_t strlen (const char *s) {
 }
 
 /* Hex string ("1f", "0x1f", "BF15C000") -> number, stops at first non-hex */
-unsigned int parse_hex (const char *s) {
+unsigned int parse_hex(const char *s) {
     unsigned int v = 0;
 
     if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
@@ -84,7 +84,7 @@ unsigned int parse_hex (const char *s) {
     return v;
 }
 
-int strcmp (const char *a, const char *b) {
+int strcmp(const char *a, const char *b) {
     while (*a && *a == *b) {
         a++;
         b++;

@@ -13,7 +13,7 @@
  */
 typedef unsigned int u32;
 typedef unsigned short u16;
-typedef int (*printf_t) (const char *fmt, ...);
+typedef int(*printf_t) (const char *fmt, ...);
 
 #define REG32(addr) (*(volatile u32 *) (addr))
 
@@ -37,23 +37,23 @@ struct plane {
     u32 w, h, pitch;
 };
 
-static u32 read_count (void) {
+static u32 read_count(void) {
     u32 v;
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
-static void wait_seconds (u32 s) {
+static void wait_seconds(u32 s) {
     while (s--) {
-        u32 t0 = read_count ();
-        while (read_count () - t0 < COUNT_HZ) {
+        u32 t0 = read_count();
+        while (read_count() - t0 < COUNT_HZ) {
         }
     }
 }
 
 /* Returns 0 if the header does not look sane */
-static int plane_get (printf_t pf, const char *name, u32 reg, struct plane *p) {
-    u32 phys = (REG32 (reg) & 0x03ffffffu) << 3;
+static int plane_get(printf_t pf, const char *name, u32 reg, struct plane *p) {
+    u32 phys = (REG32(reg) & 0x03ffffffu) << 3;
     u32 buf;
 
     p->hdr = (volatile u32 *) (0xa0000000u | phys);
@@ -63,19 +63,19 @@ static int plane_get (printf_t pf, const char *name, u32 reg, struct plane *p) {
     buf = p->hdr[4];
     p->pix = (volatile u16 *) buf;
 
-    pf ("%s: hdr %08x, %dx%d, pitch %d px, pixels at %08x\n",
+    pf("%s: hdr %08x, %dx%d, pitch %d px, pixels at %08x\n",
         name, phys, p->w, p->h, p->pitch, buf);
     if (p->w == 0 || p->w > 1920 || p->h == 0 || p->h > 1080 || p->pitch < p->w
             || buf < 0xa0100000u || buf >= 0xa8000000u) {
-        pf ("%s: header looks wrong, not drawing\n", name);
+        pf("%s: header looks wrong, not drawing\n", name);
         return 0;
     }
-    pf ("%s: first px %04x %04x, centre px %04x\n", name, p->pix[0], p->pix[1],
+    pf("%s: first px %04x %04x, centre px %04x\n", name, p->pix[0], p->pix[1],
         p->pix[(p->h / 2) * p->pitch + p->w / 2]);
     return 1;
 }
 
-static void draw_bars (struct plane *p, int vertical) {
+static void draw_bars(struct plane *p, int vertical) {
     u32 x, y;
 
     for (y = 0; y < p->h; y++) {
@@ -86,23 +86,23 @@ static void draw_bars (struct plane *p, int vertical) {
     }
 }
 
-void hook_main (printf_t pf) {
+void hook_main(printf_t pf) {
     struct plane l6, l5;
     int ok6, ok5;
 
-    pf ("\n=== HOOK DRAW ===\n");
-    ok6 = plane_get (pf, "layer6", 0xbf441028, &l6);
-    ok5 = plane_get (pf, "layer5", 0xbf441030, &l5);
+    pf("\n=== HOOK DRAW ===\n");
+    ok6 = plane_get(pf, "layer6", 0xbf441028, &l6);
+    ok5 = plane_get(pf, "layer5", 0xbf441030, &l5);
 
     if (ok6) {
-        draw_bars (&l6, 1);     /* layer 6: vertical bars */
+        draw_bars(&l6, 1);     /* layer 6: vertical bars */
     }
     if (ok5) {
-        draw_bars (&l5, 0);     /* layer 5: horizontal bars */
+        draw_bars(&l5, 0);     /* layer 5: horizontal bars */
     }
-    pf ("Drew bars: layer6 = VERTICAL, layer5 = HORIZONTAL.\n");
-    pf ("Bar values: f800 07e0 001f ffff 7c00 83e0 f0f0 0000. Holding 15 s...\n");
+    pf("Drew bars: layer6 = VERTICAL, layer5 = HORIZONTAL.\n");
+    pf("Bar values: f800 07e0 001f ffff 7c00 83e0 f0f0 0000. Holding 15 s...\n");
 
-    wait_seconds (15);
-    pf ("=== HOOK DRAW END, firmware continues ===\n");
+    wait_seconds(15);
+    pf("=== HOOK DRAW END, firmware continues ===\n");
 }

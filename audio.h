@@ -41,7 +41,7 @@
 #include "uboot.h"
 
 #define AUD_BASE        0xbf490000
-#define AUD_REG(off)    REG32 (AUD_BASE + (off))
+#define AUD_REG(off)    REG32(AUD_BASE + (off))
 
 #define AUD_RATE        48000
 #define AUD_FRAME       16                  /* bytes per frame, buffer 0 */
@@ -79,27 +79,27 @@ static const struct { unsigned short off; u32 val; } aud_play_regs[] = {
 };
 
 /* Free units of a buffer: size - level - reserve (0 if negative) */
-static inline u32 aud_free_units (u32 size_reg, u32 level_reg, u32 reserve_reg) {
-    u32 units = (AUD_REG (size_reg) & AUD_MASK) - (AUD_REG (level_reg) & AUD_MASK) -
-                (AUD_REG (reserve_reg) & AUD_MASK);
+static inline u32 aud_free_units(u32 size_reg, u32 level_reg, u32 reserve_reg) {
+    u32 units = (AUD_REG(size_reg) & AUD_MASK) - (AUD_REG(level_reg) & AUD_MASK) -
+                (AUD_REG(reserve_reg) & AUD_MASK);
 
     return (units & 0x80000000) ? 0 : units;
 }
 
 /* Tell the hardware how many bytes were added, then commit with bit 31 */
-static inline void aud_commit (u32 reg, u32 bytes) {
-    AUD_REG (reg) = (AUD_REG (reg) & 0xfe000000) | (bytes >> 3);
-    AUD_REG (reg) = (AUD_REG (reg) & 0x7fffffff) | 0x80000000;
+static inline void aud_commit(u32 reg, u32 bytes) {
+    AUD_REG(reg) = (AUD_REG(reg) & 0xfe000000) | (bytes >> 3);
+    AUD_REG(reg) = (AUD_REG(reg) & 0x7fffffff) | 0x80000000;
 }
 
 /* Frames that can be added now */
-static inline u32 audio_space (void) {
-    return (aud_free_units (0x1c, 0x104, 0x20) << 3) / AUD_FRAME;
+static inline u32 audio_space(void) {
+    return (aud_free_units(0x1c, 0x104, 0x20) << 3) / AUD_FRAME;
 }
 
 /* Write n stereo frames: samples[2*i] = hi half, samples[2*i+1] = lo half */
-static inline void audio_write (const short *samples, u32 n) {
-    volatile u32 *buf0 = AUD_UNCACHED (AUD_BUF_PHYS);
+static inline void audio_write(const short *samples, u32 n) {
+    volatile u32 *buf0 = AUD_UNCACHED(AUD_BUF_PHYS);
     u32 i;
 
     for (i = 0; i < n; i++) {
@@ -109,61 +109,61 @@ static inline void audio_write (const short *samples, u32 n) {
         buf0[aud_wr / 4] = w;
         aud_wr = (aud_wr + AUD_FRAME) & (AUD_BUF_SIZE - 1);
     }
-    aud_commit (0x24, n * AUD_FRAME);
+    aud_commit(0x24, n * AUD_FRAME);
 }
 
-static inline void aud_clear (u32 phys, u32 size) {
+static inline void aud_clear(u32 phys, u32 size) {
     volatile u32 *p;
 
-    for (p = AUD_UNCACHED (phys); p < AUD_UNCACHED (phys + size); p++) {
+    for (p = AUD_UNCACHED(phys); p < AUD_UNCACHED(phys + size); p++) {
         *p = 0;
     }
 }
 
 /* Reset pulse as the AV core does at init (0x87e16e70) */
-static inline void aud_reset (void) {
-    AUD_REG (0x80) = 3;
-    udelay (100);
-    AUD_REG (0x80) = 0;
-    udelay (100);
-    AUD_REG (0x80) = 0x10;
-    udelay (100);
-    AUD_REG (0x80) = 0;
+static inline void aud_reset(void) {
+    AUD_REG(0x80) = 3;
+    udelay(100);
+    AUD_REG(0x80) = 0;
+    udelay(100);
+    AUD_REG(0x80) = 0x10;
+    udelay(100);
+    AUD_REG(0x80) = 0;
 }
 
-static inline void audio_start (void) {
+static inline void audio_start(void) {
     u32 i;
 
-    AUD_REG (0x00) = 0x115;                         /* idle value */
-    aud_reset ();
-    aud_clear (AUD_BUF_PHYS, AUD_BUF_SIZE);
-    aud_clear (AUD_BUF1_PHYS, AUD_BUF1_SIZE);
-    aud_clear (AUD_BUF2_PHYS, AUD_BUF2_SIZE);
+    AUD_REG(0x00) = 0x115;                         /* idle value */
+    aud_reset();
+    aud_clear(AUD_BUF_PHYS, AUD_BUF_SIZE);
+    aud_clear(AUD_BUF1_PHYS, AUD_BUF1_SIZE);
+    aud_clear(AUD_BUF2_PHYS, AUD_BUF2_SIZE);
 
-    for (i = 0; i < sizeof (aud_play_regs) / sizeof (aud_play_regs[0]); i++) {
-        AUD_REG (aud_play_regs[i].off) = aud_play_regs[i].val;
+    for (i = 0; i < sizeof(aud_play_regs) / sizeof(aud_play_regs[0]); i++) {
+        AUD_REG(aud_play_regs[i].off) = aud_play_regs[i].val;
     }
-    AUD_REG (0x18) = AUD_BUF_PHYS >> 3;
-    AUD_REG (0x1c) = AUD_BUF_SIZE >> 3;
-    AUD_REG (0x28) = AUD_BUF1_PHYS >> 3;
-    AUD_REG (0x2c) = AUD_BUF1_SIZE >> 3;
-    AUD_REG (0x38) = AUD_BUF2_PHYS >> 3;
-    AUD_REG (0x3c) = AUD_BUF2_SIZE >> 3;
+    AUD_REG(0x18) = AUD_BUF_PHYS >> 3;
+    AUD_REG(0x1c) = AUD_BUF_SIZE >> 3;
+    AUD_REG(0x28) = AUD_BUF1_PHYS >> 3;
+    AUD_REG(0x2c) = AUD_BUF1_SIZE >> 3;
+    AUD_REG(0x38) = AUD_BUF2_PHYS >> 3;
+    AUD_REG(0x3c) = AUD_BUF2_SIZE >> 3;
 
     /* Hardware keeps the write pointer; start writing where it points */
-    aud_wr = (((AUD_REG (0x10c) & 0x3ffffff) << 3) - AUD_BUF_PHYS) & (AUD_BUF_SIZE - 1);
+    aud_wr = (((AUD_REG(0x10c) & 0x3ffffff) << 3) - AUD_BUF_PHYS) & (AUD_BUF_SIZE - 1);
 
-    REG8 (HDMI_TX_I2S_CH) = 0x84;                   /* HDMI: SD0 only */
+    REG8(HDMI_TX_I2S_CH) = 0x84;                   /* HDMI: SD0 only */
 
-    AUD_REG (0x00) = 0x305;                         /* playing value */
+    AUD_REG(0x00) = 0x305;                         /* playing value */
 }
 
-static inline void audio_stop (void) {
-    aud_clear (AUD_BUF_PHYS, AUD_BUF_SIZE);         /* no leftovers on HDMI */
-    aud_clear (AUD_BUF1_PHYS, AUD_BUF1_SIZE);
-    AUD_REG (0x00) = 0x115;
-    AUD_REG (0x60) = 0x00002000;
-    AUD_REG (0x64) = 0x20000000;
+static inline void audio_stop(void) {
+    aud_clear(AUD_BUF_PHYS, AUD_BUF_SIZE);         /* no leftovers on HDMI */
+    aud_clear(AUD_BUF1_PHYS, AUD_BUF1_SIZE);
+    AUD_REG(0x00) = 0x115;
+    AUD_REG(0x60) = 0x00002000;
+    AUD_REG(0x64) = 0x20000000;
 }
 
 #endif

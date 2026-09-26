@@ -15,21 +15,21 @@ typedef unsigned int u32;
 extern "C" {
 #endif
 
-int getc (void);
-int tstc (void);
-void putc (char c);
-void puts (const char *s);
+int getc(void);
+int tstc(void);
+void putc(char c);
+void puts(const char *s);
 #if !(defined(__cplusplus) && defined(GFX_NC5874))
-int printf (const char *fmt, ...);
-void *malloc (unsigned int size);
-void free (void *ptr);
+int printf(const char *fmt, ...);
+void *malloc(unsigned int size);
+void free(void *ptr);
 #endif
-void udelay (unsigned long us);
-unsigned long get_timer (unsigned long base);
+void udelay(unsigned long us);
+unsigned long get_timer(unsigned long base);
 
 /* From libc.c */
-u32 parse_hex (const char *s);
-int strcmp (const char *a, const char *b);
+u32 parse_hex(const char *s);
+int strcmp(const char *a, const char *b);
 
 #ifdef __cplusplus
 }

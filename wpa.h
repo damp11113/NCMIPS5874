@@ -17,11 +17,11 @@ struct sha1 {
     unsigned char buf[64];
 };
 
-static wpa_u32 sha1_rol (wpa_u32 x, int n) {
+static wpa_u32 sha1_rol(wpa_u32 x, int n) {
     return (x << n) | (x >> (32 - n));
 }
 
-static void sha1_block (wpa_u32 *h, const unsigned char *p) {
+static void sha1_block(wpa_u32 *h, const unsigned char *p) {
     wpa_u32 w[80], a, b, c, d, e, t;
     int i;
 
@@ -29,7 +29,7 @@ static void sha1_block (wpa_u32 *h, const unsigned char *p) {
         w[i] = (wpa_u32) p[4 * i] << 24 | p[4 * i + 1] << 16 | p[4 * i + 2] << 8 | p[4 * i + 3];
     }
     for (; i < 80; i++) {
-        w[i] = sha1_rol (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+        w[i] = sha1_rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
     }
     a = h[0]; b = h[1]; c = h[2]; d = h[3]; e = h[4];
     for (i = 0; i < 80; i++) {
@@ -42,13 +42,13 @@ static void sha1_block (wpa_u32 *h, const unsigned char *p) {
         } else {
             t = (b ^ c ^ d) + 0xca62c1d6;
         }
-        t += sha1_rol (a, 5) + e + w[i];
-        e = d; d = c; c = sha1_rol (b, 30); b = a; a = t;
+        t += sha1_rol(a, 5) + e + w[i];
+        e = d; d = c; c = sha1_rol(b, 30); b = a; a = t;
     }
     h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
 }
 
-static void sha1_init (struct sha1 *s) {
+static void sha1_init(struct sha1 *s) {
     s->h[0] = 0x67452301;
     s->h[1] = 0xefcdab89;
     s->h[2] = 0x98badcfe;
@@ -57,28 +57,28 @@ static void sha1_init (struct sha1 *s) {
     s->len = 0;
 }
 
-static void sha1_update (struct sha1 *s, const unsigned char *p, wpa_u32 n) {
+static void sha1_update(struct sha1 *s, const unsigned char *p, wpa_u32 n) {
     while (n--) {
         s->buf[s->len++ & 63] = *p++;
         if (!(s->len & 63)) {
-            sha1_block (s->h, s->buf);
+            sha1_block(s->h, s->buf);
         }
     }
 }
 
-static void sha1_final (struct sha1 *s, unsigned char *out) {
+static void sha1_final(struct sha1 *s, unsigned char *out) {
     wpa_u32 bits = s->len * 8;
     unsigned char pad = 0x80, zero = 0, lenb[8];
     int i;
 
-    sha1_update (s, &pad, 1);
+    sha1_update(s, &pad, 1);
     while ((s->len & 63) != 56) {
-        sha1_update (s, &zero, 1);
+        sha1_update(s, &zero, 1);
     }
     for (i = 0; i < 8; i++) {
         lenb[i] = i < 4 ? 0 : bits >> (8 * (7 - i));
     }
-    sha1_update (s, lenb, 8);
+    sha1_update(s, lenb, 8);
     for (i = 0; i < 20; i++) {
         out[i] = s->h[i / 4] >> (8 * (3 - (i & 3)));
     }
@@ -91,66 +91,66 @@ struct hmac_sha1 {
     struct sha1 in, out;
 };
 
-static void hmac_sha1_init (struct hmac_sha1 *m, const unsigned char *key, wpa_u32 klen) {
+static void hmac_sha1_init(struct hmac_sha1 *m, const unsigned char *key, wpa_u32 klen) {
     unsigned char k[64], kh[20];
     int i;
 
     if (klen > 64) {
         struct sha1 s;
 
-        sha1_init (&s);
-        sha1_update (&s, key, klen);
-        sha1_final (&s, kh);
+        sha1_init(&s);
+        sha1_update(&s, key, klen);
+        sha1_final(&s, kh);
         key = kh;
         klen = 20;
     }
     for (i = 0; i < 64; i++) {
         k[i] = ((wpa_u32) i < klen ? key[i] : 0) ^ 0x36;
     }
-    sha1_init (&m->in);
-    sha1_update (&m->in, k, 64);
+    sha1_init(&m->in);
+    sha1_update(&m->in, k, 64);
     for (i = 0; i < 64; i++) {
         k[i] ^= 0x36 ^ 0x5c;
     }
-    sha1_init (&m->out);
-    sha1_update (&m->out, k, 64);
+    sha1_init(&m->out);
+    sha1_update(&m->out, k, 64);
 }
 
 /* One MAC from prepared states; data given as up to 4 pieces (NULL ends) */
-static void hmac_sha1_run (const struct hmac_sha1 *m, const unsigned char *d0, wpa_u32 n0,
+static void hmac_sha1_run(const struct hmac_sha1 *m, const unsigned char *d0, wpa_u32 n0,
                            const unsigned char *d1, wpa_u32 n1,
                            const unsigned char *d2, wpa_u32 n2,
                            const unsigned char *d3, wpa_u32 n3, unsigned char *mac) {
     struct sha1 s = m->in;
     unsigned char ih[20];
 
-    sha1_update (&s, d0, n0);
+    sha1_update(&s, d0, n0);
     if (d1) {
-        sha1_update (&s, d1, n1);
+        sha1_update(&s, d1, n1);
     }
     if (d2) {
-        sha1_update (&s, d2, n2);
+        sha1_update(&s, d2, n2);
     }
     if (d3) {
-        sha1_update (&s, d3, n3);
+        sha1_update(&s, d3, n3);
     }
-    sha1_final (&s, ih);
+    sha1_final(&s, ih);
     s = m->out;
-    sha1_update (&s, ih, 20);
-    sha1_final (&s, mac);
+    sha1_update(&s, ih, 20);
+    sha1_final(&s, mac);
 }
 
-static void hmac_sha1 (const unsigned char *key, wpa_u32 klen, const unsigned char *data,
+static void hmac_sha1(const unsigned char *key, wpa_u32 klen, const unsigned char *data,
                        wpa_u32 len, unsigned char *mac) {
     struct hmac_sha1 m;
 
-    hmac_sha1_init (&m, key, klen);
-    hmac_sha1_run (&m, data, len, 0, 0, 0, 0, 0, 0, mac);
+    hmac_sha1_init(&m, key, klen);
+    hmac_sha1_run(&m, data, len, 0, 0, 0, 0, 0, 0, mac);
 }
 
 /* ---- PMK = PBKDF2-HMAC-SHA1 (passphrase, SSID, 4096, 32) ---------------- */
 
-static void wpa_pmk (const char *pass, const unsigned char *ssid, wpa_u32 ssid_len,
+static void wpa_pmk(const char *pass, const unsigned char *ssid, wpa_u32 ssid_len,
                      unsigned char *pmk) {
     struct hmac_sha1 m;
     unsigned char u[20], t[20], cnt[4];
@@ -160,16 +160,16 @@ static void wpa_pmk (const char *pass, const unsigned char *ssid, wpa_u32 ssid_l
     while (pass[plen]) {
         plen++;
     }
-    hmac_sha1_init (&m, (const unsigned char *) pass, plen);
+    hmac_sha1_init(&m, (const unsigned char *) pass, plen);
     for (blk = 1; blk <= 2; blk++) {
         cnt[0] = cnt[1] = cnt[2] = 0;
         cnt[3] = blk;
-        hmac_sha1_run (&m, ssid, ssid_len, cnt, 4, 0, 0, 0, 0, u);
+        hmac_sha1_run(&m, ssid, ssid_len, cnt, 4, 0, 0, 0, 0, u);
         for (j = 0; j < 20; j++) {
             t[j] = u[j];
         }
         for (i = 1; i < 4096; i++) {
-            hmac_sha1_run (&m, u, 20, 0, 0, 0, 0, 0, 0, u);
+            hmac_sha1_run(&m, u, 20, 0, 0, 0, 0, 0, 0, u);
             for (j = 0; j < 20; j++) {
                 t[j] ^= u[j];
             }
@@ -182,7 +182,7 @@ static void wpa_pmk (const char *pass, const unsigned char *ssid, wpa_u32 ssid_l
 
 /* ---- PRF-n (IEEE 802.11 12.7.1.2): HMAC(K, label || 0 || data || i) --- */
 
-static void wpa_prf (const unsigned char *key, wpa_u32 klen, const char *label,
+static void wpa_prf(const unsigned char *key, wpa_u32 klen, const char *label,
                      const unsigned char *data, wpa_u32 dlen, unsigned char *out, wpa_u32 olen) {
     struct hmac_sha1 m;
     unsigned char mac[20], zero = 0, i = 0;
@@ -191,9 +191,9 @@ static void wpa_prf (const unsigned char *key, wpa_u32 klen, const char *label,
     while (label[llen]) {
         llen++;
     }
-    hmac_sha1_init (&m, key, klen);
+    hmac_sha1_init(&m, key, klen);
     while (pos < olen) {
-        hmac_sha1_run (&m, (const unsigned char *) label, llen, &zero, 1, data, dlen, &i, 1, mac);
+        hmac_sha1_run(&m, (const unsigned char *) label, llen, &zero, 1, data, dlen, &i, 1, mac);
         for (k = 0; k < 20 && pos < olen; k++) {
             out[pos++] = mac[k];
         }
@@ -224,25 +224,25 @@ static const unsigned char aes_sbox[256] = {
 
 static unsigned char aes_inv_sbox[256];
 
-static unsigned char aes_xt (unsigned char x) {
+static unsigned char aes_xt(unsigned char x) {
     return (x << 1) ^ ((x & 0x80) ? 0x1b : 0);
 }
 
-static unsigned char aes_mul (unsigned char a, unsigned char b) {
+static unsigned char aes_mul(unsigned char a, unsigned char b) {
     unsigned char r = 0;
 
     while (b) {
         if (b & 1) {
             r ^= a;
         }
-        a = aes_xt (a);
+        a = aes_xt(a);
         b >>= 1;
     }
     return r;
 }
 
 /* 11 round keys of 16 bytes */
-static void aes128_key (const unsigned char *key, unsigned char *rk) {
+static void aes128_key(const unsigned char *key, unsigned char *rk) {
     unsigned char rcon = 1, t[4];
     int i, j;
 
@@ -260,7 +260,7 @@ static void aes128_key (const unsigned char *key, unsigned char *rk) {
             t[1] = aes_sbox[t[2]];
             t[2] = aes_sbox[t[3]];
             t[3] = aes_sbox[x];
-            rcon = aes_xt (rcon);
+            rcon = aes_xt(rcon);
         }
         for (j = 0; j < 4; j++) {
             rk[i + j] = rk[i - 16 + j] ^ t[j];
@@ -268,8 +268,8 @@ static void aes128_key (const unsigned char *key, unsigned char *rk) {
     }
 }
 
-__attribute__ ((unused))
-static void aes128_encrypt (const unsigned char *rk, unsigned char *b) {
+__attribute__((unused))
+static void aes128_encrypt(const unsigned char *rk, unsigned char *b) {
     unsigned char t[16];
     int r, i, c;
 
@@ -287,10 +287,10 @@ static void aes128_encrypt (const unsigned char *rk, unsigned char *b) {
             if (r == 10) {
                 break;
             }
-            t[c] ^= x ^ aes_xt (a0 ^ a1);
-            t[c + 1] ^= x ^ aes_xt (a1 ^ a2);
-            t[c + 2] ^= x ^ aes_xt (a2 ^ a3);
-            t[c + 3] ^= x ^ aes_xt (a3 ^ a0);
+            t[c] ^= x ^ aes_xt(a0 ^ a1);
+            t[c + 1] ^= x ^ aes_xt(a1 ^ a2);
+            t[c + 2] ^= x ^ aes_xt(a2 ^ a3);
+            t[c + 3] ^= x ^ aes_xt(a3 ^ a0);
         }
         for (i = 0; i < 16; i++) {
             b[i] = t[i] ^ rk[16 * r + i];
@@ -298,7 +298,7 @@ static void aes128_encrypt (const unsigned char *rk, unsigned char *b) {
     }
 }
 
-static void aes128_decrypt (const unsigned char *rk, unsigned char *b) {
+static void aes128_decrypt(const unsigned char *rk, unsigned char *b) {
     unsigned char t[16];
     int r, i, c;
 
@@ -315,10 +315,10 @@ static void aes128_decrypt (const unsigned char *rk, unsigned char *b) {
             for (c = 0; c < 16; c += 4) {               /* InvMixColumns */
                 unsigned char a0 = t[c], a1 = t[c + 1], a2 = t[c + 2], a3 = t[c + 3];
 
-                t[c] = aes_mul (a0, 14) ^ aes_mul (a1, 11) ^ aes_mul (a2, 13) ^ aes_mul (a3, 9);
-                t[c + 1] = aes_mul (a0, 9) ^ aes_mul (a1, 14) ^ aes_mul (a2, 11) ^ aes_mul (a3, 13);
-                t[c + 2] = aes_mul (a0, 13) ^ aes_mul (a1, 9) ^ aes_mul (a2, 14) ^ aes_mul (a3, 11);
-                t[c + 3] = aes_mul (a0, 11) ^ aes_mul (a1, 13) ^ aes_mul (a2, 9) ^ aes_mul (a3, 14);
+                t[c] = aes_mul(a0, 14) ^ aes_mul(a1, 11) ^ aes_mul(a2, 13) ^ aes_mul(a3, 9);
+                t[c + 1] = aes_mul(a0, 9) ^ aes_mul(a1, 14) ^ aes_mul(a2, 11) ^ aes_mul(a3, 13);
+                t[c + 2] = aes_mul(a0, 13) ^ aes_mul(a1, 9) ^ aes_mul(a2, 14) ^ aes_mul(a3, 11);
+                t[c + 3] = aes_mul(a0, 11) ^ aes_mul(a1, 13) ^ aes_mul(a2, 9) ^ aes_mul(a3, 14);
             }
         }
         for (i = 0; i < 16; i++) {                      /* InvShiftRows + InvSubBytes */
@@ -331,13 +331,13 @@ static void aes128_decrypt (const unsigned char *rk, unsigned char *b) {
 }
 
 /* RFC 3394 unwrap: in = (n + 1) * 8 bytes, out = n * 8 bytes. 0 = ok. */
-static int aes_unwrap (const unsigned char *kek, const unsigned char *in, wpa_u32 n,
+static int aes_unwrap(const unsigned char *kek, const unsigned char *in, wpa_u32 n,
                        unsigned char *out) {
     unsigned char rk[176], a[8], b[16];
     wpa_u32 i, t;
     int j, k;
 
-    aes128_key (kek, rk);
+    aes128_key(kek, rk);
     for (k = 0; k < 8; k++) {
         a[k] = in[k];
     }
@@ -351,7 +351,7 @@ static int aes_unwrap (const unsigned char *kek, const unsigned char *in, wpa_u3
                 b[k] = a[k] ^ (k >= 4 ? t >> (8 * (7 - k)) : 0);
                 b[8 + k] = out[8 * (i - 1) + k];
             }
-            aes128_decrypt (rk, b);
+            aes128_decrypt(rk, b);
             for (k = 0; k < 8; k++) {
                 a[k] = b[k];
                 out[8 * (i - 1) + k] = b[8 + k];

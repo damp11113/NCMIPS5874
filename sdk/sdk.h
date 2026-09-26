@@ -53,7 +53,7 @@ extern u32 sdk_bigmem_bytes;                /* heap from the AV core's area, 0 =
 extern char sdk_app_dir[SDK_PATH_MAX];      /* e.g. "NCAPPS/APPS/DOOM", "" = root */
 extern char sdk_data_dir[SDK_PATH_MAX];     /* e.g. "NCAPPS/APPSDATA/DOOM" */
 
-void sdk_resolve (const char *path, char *out);     /* app path -> stick path */
+void sdk_resolve(const char *path, char *out);     /* app path -> stick path */
 
 /* ---- files and folders ---- */
 
@@ -63,28 +63,45 @@ struct sdk_dirent {
     u32 size;
 };
 
-long sdk_file_size (const char *path);                  /* -1 = not found */
-long sdk_read_file (const char *path, void *dst, long max);
-int sdk_load_file (const char *path, unsigned char **data, long *size);
-int sdk_dir_open (const char *path);                    /* handle, -1 = error */
-int sdk_dir_read (int h, struct sdk_dirent *e);         /* 1 = got one, 0 = end */
-void sdk_dir_close (int h);
-extern void (*sdk_load_progress) (u32 done, u32 total); /* optional, big reads */
-u32 sdk_usb_bytes (void);                               /* read from USB so far */
+long sdk_file_size(const char *path);                  /* -1 = not found */
+long sdk_read_file(const char *path, void *dst, long max);
+int sdk_load_file(const char *path, unsigned char **data, long *size);
+int sdk_dir_open(const char *path);                    /* handle, -1 = error */
+int sdk_dir_read(int h, struct sdk_dirent *e);         /* 1 = got one, 0 = end */
+void sdk_dir_close(int h);
+extern void(*sdk_load_progress) (u32 done, u32 total); /* optional, big reads */
+u32 sdk_usb_bytes(void);                               /* read from USB so far */
 
 /* The only write to the stick: replace an existing file of exactly 512
  * bytes in place (FAT and folders untouched). The old and new contents
  * must both start with magic; read back after writing. 0 = ok. */
-int sdk_overwrite_sector_file (const char *path, const void *data, const char *magic);
+int sdk_overwrite_sector_file(const char *path, const void *data, const char *magic);
+
+/*
+ * App config: key=value lines in NCAPPS/APPSDATA/<app>/CONFIG.TXT (the
+ * launcher's data folder for the app). stage.sh creates the file (512
+ * bytes, first line SDK_CONFIG_MAGIC) because the SDK cannot create
+ * files, only overwrite them. Up to 16 keys (15 chars), values up to 31
+ * chars. Load once at start, set values, save when something changed.
+ * load / save: 0 = ok, -1 = no file (app not started by the launcher, or
+ * not staged) or too much text.
+ */
+#define SDK_CONFIG_MAGIC "# NCAPPS app config"
+int sdk_config_load(void);
+const char *sdk_config_get(const char *key, const char *def);
+int sdk_config_get_int(const char *key, int def);
+void sdk_config_set(const char *key, const char *value);
+void sdk_config_set_int(const char *key, int value);
+int sdk_config_save(void);
 
 /* Streamed files: up to 3 open, read in pieces (32 KB USB reads) */
-int sdk_open (const char *path);                        /* handle, -1 = error */
-long sdk_read (int h, void *dst, long len);             /* bytes, 0 = end */
-void sdk_seek (int h, u32 pos);
-u32 sdk_tell (int h);
-u32 sdk_size (int h);
-void sdk_close (int h);
-u32 sdk_usb_ticks (void);                               /* CP0 ticks spent in USB reads */
+int sdk_open(const char *path);                        /* handle, -1 = error */
+long sdk_read(int h, void *dst, long len);             /* bytes, 0 = end */
+void sdk_seek(int h, u32 pos);
+u32 sdk_tell(int h);
+u32 sdk_size(int h);
+void sdk_close(int h);
+u32 sdk_usb_ticks(void);                               /* CP0 ticks spent in USB reads */
 
 struct sdk_storage {
     char vendor[41], product[21], revision[9];
@@ -93,7 +110,7 @@ struct sdk_storage {
     u32 cluster_bytes;
 };
 
-int sdk_storage_info (struct sdk_storage *st);         /* 0 = ok */
+int sdk_storage_info(struct sdk_storage *st);         /* 0 = ok */
 
 /* ---- input ---- */
 
@@ -107,28 +124,37 @@ enum {
 struct sdk_key {
     int btn;        /* BTN_*, BTN_NONE for other serial characters */
     int ch;         /* serial character, 0 for the remote */
-    int repeat;     /* remote button held */
-    int remote;     /* 1 = from the remote */
+    int repeat;     /* remote / front button held */
+    int remote;     /* 1 = from the remote or the front buttons */
 };
 
-int sdk_key_poll (struct sdk_key *k);       /* 1 = got a key */
-const char *sdk_btn_name (int btn);
+/* Remote + serial; on the satellite box also its 6 front buttons:
+ * CH+ / CH- = UP / DOWN, VOL- / VOL+ = LEFT / RIGHT, OK, MENU. */
+int sdk_key_poll(struct sdk_key *k);       /* 1 = got a key */
+const char *sdk_btn_name(int btn);
+
+/* ---- front panel (satellite box; does nothing on the IPTV box) ---- */
+
+extern int sdk_box_sat;                     /* 1 = satellite box (M88CS8002B) */
+void sdk_panel_show(const char *s);        /* up to 3 characters on the display */
+void sdk_panel_led(int on);                /* green LED */
+void sdk_panel_invalidate(void);           /* another program changed the panel */
 
 /* ---- system ---- */
 
-void sdk_exit (int code) __attribute__ ((noreturn));
+void sdk_exit(int code) __attribute__((noreturn));
 
 /* Nothing to do for a moment: wait us microseconds. The time is counted
  * as idle for the performance overlay's CPU figure (apps that never call
  * it show 100 %). */
-void sdk_idle (u32 us);
+void sdk_idle(u32 us);
 
 /* Performance overlay: a thin bar at the top of the screen with CPU load
  * (from sdk_idle), heap use and USB reads, redrawn every 0.5 s from
  * sdk_key_poll / sdk_idle. MUTE on the remote toggles it in any SDK app;
  * the launcher passes its setting to apps ("@ovl=1"). */
 extern int sdk_overlay_on;
-void sdk_overlay_tick (void);
+void sdk_overlay_tick(void);
 
 /* Screen saver: after sdk_saver_min minutes without a key (remote or
  * serial) the OSD layer is switched off (black screen, the app keeps
@@ -137,14 +163,14 @@ void sdk_overlay_tick (void);
  * sdk_saver_kick () counts as a key press and wakes the screen (apps that
  * read the remote with ir_poll themselves, or while a video plays). */
 extern u32 sdk_saver_min;
-void sdk_saver_kick (void);
+void sdk_saver_kick(void);
 
 /* 1 while the screen saver has the screen off: apps can skip periodic
  * redraws (status lines, meters); the frame buffer is shown again as it is
  * when a key wakes the screen, so keep drawing real content changes. */
 extern int sdk_screen_off;
-void sdk_reboot (void) __attribute__ ((noreturn));     /* watchdog reset, boots from flash */
-void sdk_cache_sync (u32 start, u32 len);
-void sdk_libc_reset (void);
+void sdk_reboot(void) __attribute__((noreturn));     /* watchdog reset, boots from flash */
+void sdk_cache_sync(u32 start, u32 len);
+void sdk_libc_reset(void);
 
 #endif

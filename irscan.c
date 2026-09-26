@@ -20,23 +20,23 @@ static const u32 in_regs[] = {
 
 static u32 toggles[NREGS][32];
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     u32 prev[NREGS], start, loops = 0;
     int r, b, found = 0;
 
-    printf ("Point a remote at the box and hold/press buttons for 5 seconds...\n");
-    printf ("Starting in 1 second.\n");
-    udelay (1000000);
-    printf ("GO!\n");
+    printf("Point a remote at the box and hold/press buttons for 5 seconds...\n");
+    printf("Starting in 1 second.\n");
+    udelay(1000000);
+    printf("GO!\n");
 
     for (r = 0; r < NREGS; r++) {
-        prev[r] = REG32 (in_regs[r]);
+        prev[r] = REG32(in_regs[r]);
     }
 
-    start = get_timer (0);
-    while (get_timer (start) < SCAN_MS) {
+    start = get_timer(0);
+    while (get_timer(start) < SCAN_MS) {
         for (r = 0; r < NREGS; r++) {
-            u32 now = REG32 (in_regs[r]);
+            u32 now = REG32(in_regs[r]);
             u32 diff = now ^ prev[r];
             if (diff) {
                 for (b = 0; b < 32; b++) {
@@ -50,18 +50,18 @@ int main (int argc, char *argv[]) {
         loops++;
     }
 
-    printf ("Done, %d samples (%d per ms).\n\n", loops, loops / SCAN_MS);
+    printf("Done, %d samples (%d per ms).\n\n", loops, loops / SCAN_MS);
     for (r = 0; r < NREGS; r++) {
         for (b = 0; b < 32; b++) {
             if (toggles[r][b]) {
-                printf ("  reg 0x%08x bit %2d (pin %2d): %d toggles\n",
+                printf("  reg 0x%08x bit %2d (pin %2d): %d toggles\n",
                         in_regs[r], b, r * 32 + b, toggles[r][b]);
                 found++;
             }
         }
     }
     if (!found) {
-        printf ("  No input bit toggled. IR is not on these GPIO banks.\n");
+        printf("  No input bit toggled. IR is not on these GPIO banks.\n");
     }
     return 0;
 }

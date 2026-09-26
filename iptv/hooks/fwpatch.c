@@ -30,7 +30,7 @@ static const char *const names[NPATCH] = {
 static const char repl[NPATCH] = { 'X', 'x', 'x', 'x' };
 static const char whole[NPATCH] = { 0, 0, 0, 1 };      /* 1 = must start a string */
 
-static int match (const unsigned char *p, const char *s) {
+static int match(const unsigned char *p, const char *s) {
     while (*s) {
         if (*p++ != (unsigned char) *s++) {
             return 0;
@@ -39,7 +39,7 @@ static int match (const unsigned char *p, const char *s) {
     return 1;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     unsigned char *p;
     int i, total = 0;
 
@@ -49,17 +49,17 @@ int main (int argc, char *argv[]) {
         int n = 0;
 
         for (p = (unsigned char *) IMAGE_START; p < (unsigned char *) IMAGE_END - 32; p++) {
-            if (*p == (unsigned char) names[i][0] && match (p, names[i]) && (!whole[i] || !p[-1])) {
+            if (*p == (unsigned char) names[i][0] && match(p, names[i]) && (!whole[i] || !p[-1])) {
                 *p = repl[i];
                 /* write the changed line back to RAM for the firmware */
-                __asm__ volatile ("cache 0x15, 0(%0)" : : "r" (p) : "memory");
+                __asm__ volatile("cache 0x15, 0(%0)" : : "r" (p) : "memory");
                 n++;
             }
         }
-        printf ("fwpatch: %-22s %d x\n", names[i], n);
+        printf("fwpatch: %-22s %d x\n", names[i], n);
         total += n;
     }
-    __asm__ volatile ("sync" : : : "memory");
-    printf ("fwpatch: %d patches (update + ad download off)\n", total);
+    __asm__ volatile("sync" : : : "memory");
+    printf("fwpatch: %d patches (update + ad download off)\n", total);
     return 0;
 }

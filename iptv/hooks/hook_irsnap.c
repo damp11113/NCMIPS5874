@@ -11,22 +11,22 @@
 #include "irranges.h"
 
 typedef unsigned int u32;
-typedef int (*printf_t) (const char *fmt, ...);
+typedef int(*printf_t) (const char *fmt, ...);
 
 #define REG32(addr) (*(volatile u32 *) (addr))
 #define FW_PRINTF   ((printf_t) 0x8018c184)
 
-void hook_main (void) {
+void hook_main(void) {
     printf_t pf = FW_PRINTF;
     u32 r, i;
 
-    pf ("\n=== IR SNAP BEGIN (firmware) ===\n");
+    pf("\n=== IR SNAP BEGIN (firmware) ===\n");
     for (r = 0; r < IR_NRANGES; r++) {
         for (i = 0; i < ir_ranges[r].words; i += 4) {
             u32 a = ir_ranges[r].start + i * 4;
-            pf ("S %08x: %08x %08x %08x %08x\n", a,
-                REG32 (a), REG32 (a + 4), REG32 (a + 8), REG32 (a + 12));
+            pf("S %08x: %08x %08x %08x %08x\n", a,
+                REG32(a), REG32(a + 4), REG32(a + 8), REG32(a + 12));
         }
     }
-    pf ("=== IR SNAP END ===\n");
+    pf("=== IR SNAP END ===\n");
 }

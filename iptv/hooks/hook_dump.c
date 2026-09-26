@@ -7,7 +7,7 @@
  * No U-Boot services are available here: only the printf pointer.
  */
 typedef unsigned int u32;
-typedef int (*printf_t) (const char *fmt, ...);
+typedef int(*printf_t) (const char *fmt, ...);
 
 #define REG32(addr) (*(volatile u32 *) (addr))
 
@@ -26,22 +26,22 @@ static const struct range ranges[] = {
     { 0xbf261500, 0x10 },
 };
 
-void hook_main (printf_t pf) {
+void hook_main(printf_t pf) {
     u32 r, i;
 
-    pf ("\n=== HOOK DUMP BEGIN ===\n");
-    for (r = 0; r < sizeof (ranges) / sizeof (ranges[0]); r++) {
+    pf("\n=== HOOK DUMP BEGIN ===\n");
+    for (r = 0; r < sizeof(ranges) / sizeof(ranges[0]); r++) {
         u32 base = ranges[r].start;
 
-        pf ("--- 0x%08x ---\n", base);
+        pf("--- 0x%08x ---\n", base);
         for (i = 0; i < ranges[r].words; i += 4) {
             u32 a = base + i * 4;
-            u32 v0 = REG32 (a), v1 = REG32 (a + 4), v2 = REG32 (a + 8), v3 = REG32 (a + 12);
+            u32 v0 = REG32(a), v1 = REG32(a + 4), v2 = REG32(a + 8), v3 = REG32(a + 12);
 
             if (v0 | v1 | v2 | v3) {
-                pf ("%08x: %08x %08x %08x %08x\n", a, v0, v1, v2, v3);
+                pf("%08x: %08x %08x %08x %08x\n", a, v0, v1, v2, v3);
             }
         }
     }
-    pf ("=== HOOK DUMP END ===\n");
+    pf("=== HOOK DUMP END ===\n");
 }

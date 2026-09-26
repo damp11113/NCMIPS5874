@@ -31,9 +31,9 @@
 
 #include "ubusb.h"
 
-int memcmp (const void *a, const void *b, unsigned int n);   /* libc.c */
-void *memcpy (void *dst, const void *src, unsigned int n);
-void *memset (void *dst, int c, unsigned int n);
+int memcmp(const void *a, const void *b, unsigned int n);   /* libc.c */
+void *memcpy(void *dst, const void *src, unsigned int n);
+void *memset(void *dst, int c, unsigned int n);
 
 #define UFS_SECTOR              512
 #define UFS_CHUNK_SECTORS       128                     /* 64 KB per read */
@@ -43,10 +43,10 @@ struct ufile {
     u32 size, pos;
     u32 first, clus, clus_idx;      /* first cluster; cluster holding clus_idx */
     u32 cstart, clen;               /* file bytes held in cbuf */
-    unsigned char cbuf[UFS_CHUNK] __attribute__ ((aligned (64)));
+    unsigned char cbuf[UFS_CHUNK] __attribute__((aligned(64)));
 };
 
-typedef u32 (*ub_blk_read_t) (int dev, u32 start, u32 blkcnt, void *buffer);
+typedef u32(*ub_blk_read_t) (int dev, u32 start, u32 blkcnt, void *buffer);
 
 static void *ufs_dev;
 static u32 ufs_read_fn;
@@ -54,8 +54,8 @@ static int ufs_fat32;
 static u32 ufs_spc, ufs_fat_start, ufs_root_start, ufs_root_sectors, ufs_data_start;
 static u32 ufs_root_clus, ufs_clus_bytes;
 static u32 ufs_fat_cached = 0xffffffffu;
-static unsigned char ufs_sec[UFS_SECTOR] __attribute__ ((aligned (64)));
-static unsigned char ufs_fatsec[UFS_SECTOR] __attribute__ ((aligned (64)));
+static unsigned char ufs_sec[UFS_SECTOR] __attribute__((aligned(64)));
+static unsigned char ufs_fatsec[UFS_SECTOR] __attribute__((aligned(64)));
 static u32 ufs_ticks, ufs_bytes;
 
 /* Recently used folders, see ufs_lookup () */
@@ -63,20 +63,20 @@ static u32 ufs_ticks, ufs_bytes;
 static struct { char path[128]; u32 clus; } ufs_dcache[UFS_DCACHE];
 static int ufs_dcache_next;
 
-static inline u32 ufs_count (void) {
+static inline u32 ufs_count(void) {
     u32 v = 0;
 
 #ifdef __mips__
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
 #endif
     return v;
 }
 
-static inline u32 ufs_le16 (const unsigned char *p) {
+static inline u32 ufs_le16(const unsigned char *p) {
     return p[0] | (p[1] << 8);
 }
 
-static inline u32 ufs_le32 (const unsigned char *p) {
+static inline u32 ufs_le32(const unsigned char *p) {
     return p[0] | (p[1] << 8) | (p[2] << 16) | ((u32) p[3] << 24);
 }
 
@@ -91,7 +91,7 @@ static inline u32 ufs_le32 (const unsigned char *p) {
 
 static int ufs_lost;
 
-static inline int ufs_stick_present (void) {
+static inline int ufs_stick_present(void) {
 #ifdef UFS_NO_PORT_CHECK
     return 1;                               /* PC tests on disk images */
 #else
@@ -114,25 +114,25 @@ static inline int ufs_stick_present (void) {
 
 static void *ufs_bot_dev;           /* 0 = use U-Boot's read */
 static u32 ufs_bot_in, ufs_bot_out, ufs_bot_lun, ufs_bot_tag = 1;
-static unsigned char ufs_bot_cbw[32] __attribute__ ((aligned (64)));
-static unsigned char ufs_bot_csw[64] __attribute__ ((aligned (64)));
+static unsigned char ufs_bot_cbw[32] __attribute__((aligned(64)));
+static unsigned char ufs_bot_csw[64] __attribute__((aligned(64)));
 
-static void ufs_bot_init (void) {
+static void ufs_bot_init(void) {
 #ifndef UFS_NO_PORT_CHECK
-    static unsigned char desc[256] __attribute__ ((aligned (64)));
+    static unsigned char desc[256] __attribute__((aligned(64)));
     u32 target = *((unsigned char *) ufs_dev + 9);
     int i;
 
     ufs_bot_dev = 0;
     ufs_bot_lun = *((unsigned char *) ufs_dev + 10);
     for (i = 0; i < UB_USB_MAX_DEVICE; i++) {
-        void *dev = ub_usb_dev (i);
+        void *dev = ub_usb_dev(i);
         int len, p, in = 0, out = 0, is_msd = 0;
 
-        if (!dev || (u32) UB_DEV_DEVNUM (dev) != target) {
+        if (!dev || (u32) UB_DEV_DEVNUM(dev) != target) {
             continue;
         }
-        len = ub_control (dev, 6, 0x80, 0x0200, 0, desc, sizeof (desc), 1000);
+        len = ub_control(dev, 6, 0x80, 0x0200, 0, desc, sizeof(desc), 1000);
         for (p = 0; p + 2 <= len && desc[p] >= 2; p += desc[p]) {
             if (desc[p + 1] == 4) {                                     /* interface */
                 is_msd = desc[p + 5] == 8 && desc[p + 7] == 0x50;
@@ -154,7 +154,7 @@ static void ufs_bot_init (void) {
 #endif
 }
 
-static inline void ufs_put32 (unsigned char *p, u32 v) {
+static inline void ufs_put32(unsigned char *p, u32 v) {
     p[0] = v;
     p[1] = v >> 8;
     p[2] = v >> 16;
@@ -162,16 +162,16 @@ static inline void ufs_put32 (unsigned char *p, u32 v) {
 }
 
 /* One READ(10) of n <= UFS_BOT_MAX_SECTORS sectors. Returns 0, or -1. */
-static int ufs_bot_read (u32 lba, u32 n, unsigned char *dst) {
+static int ufs_bot_read(u32 lba, u32 n, unsigned char *dst) {
 #ifndef UFS_NO_PORT_CHECK
     u32 len = n * UFS_SECTOR, done = 0;
     unsigned char *c = ufs_bot_cbw, *s = ufs_bot_csw;
     int actual;
 
-    memset (c, 0, 31);
-    ufs_put32 (c, 0x43425355);
-    ufs_put32 (c + 4, ufs_bot_tag);
-    ufs_put32 (c + 8, len);
+    memset(c, 0, 31);
+    ufs_put32(c, 0x43425355);
+    ufs_put32(c + 4, ufs_bot_tag);
+    ufs_put32(c + 8, len);
     c[12] = 0x80;
     c[13] = ufs_bot_lun;
     c[14] = 10;
@@ -182,21 +182,21 @@ static int ufs_bot_read (u32 lba, u32 n, unsigned char *dst) {
     c[20] = lba;
     c[22] = n >> 8;
     c[23] = n;
-    if (ub_bulk (ufs_bot_dev, ufs_bot_out, c, 31, &actual, 2000) < 0 || actual != 31) {
+    if (ub_bulk(ufs_bot_dev, ufs_bot_out, c, 31, &actual, 2000) < 0 || actual != 31) {
         return -1;
     }
     while (done < len) {
         u32 k = len - done < UFS_BOT_XFER ? len - done : UFS_BOT_XFER;
 
-        if (ub_bulk (ufs_bot_dev, ufs_bot_in, dst + done, k, &actual, 2000) < 0 ||
+        if (ub_bulk(ufs_bot_dev, ufs_bot_in, dst + done, k, &actual, 2000) < 0 ||
             actual != (int) k) {
             return -1;
         }
         done += k;
     }
-    if (ub_bulk (ufs_bot_dev, ufs_bot_in, s, 13, &actual, 2000) < 0 || actual != 13 ||
+    if (ub_bulk(ufs_bot_dev, ufs_bot_in, s, 13, &actual, 2000) < 0 || actual != 13 ||
         s[0] != 0x55 || s[1] != 0x53 || s[2] != 0x42 || s[3] != 0x53 || s[12] != 0 ||
-        ufs_le32 (s + 4) != ufs_bot_tag || ufs_le32 (s + 8) != 0) {
+        ufs_le32(s + 4) != ufs_bot_tag || ufs_le32(s + 8) != 0) {
         return -1;
     }
     ufs_bot_tag++;
@@ -210,10 +210,10 @@ static int ufs_bot_read (u32 lba, u32 n, unsigned char *dst) {
 }
 
 /* Raw sector read (own READ(10), else U-Boot's). Returns 0 ok, -1 error. */
-static int ufs_sectors (u32 start, u32 count, void *buf) {
-    u32 t0 = ufs_count (), got;
+static int ufs_sectors(u32 start, u32 count, void *buf) {
+    u32 t0 = ufs_count(), got;
 
-    if (ufs_lost || !ufs_stick_present ()) {
+    if (ufs_lost || !ufs_stick_present()) {
         ufs_lost = 1;
         return -1;
     }
@@ -221,27 +221,27 @@ static int ufs_sectors (u32 start, u32 count, void *buf) {
         for (got = 0; got < count; ) {
             u32 n = count - got < UFS_BOT_MAX_SECTORS ? count - got : UFS_BOT_MAX_SECTORS;
 
-            if (ufs_bot_read (start + got, n, (unsigned char *) buf + got * UFS_SECTOR) < 0) {
+            if (ufs_bot_read(start + got, n, (unsigned char *) buf + got * UFS_SECTOR) < 0) {
                 break;
             }
             got += n;
         }
         if (got == count) {
-            ufs_ticks += ufs_count () - t0;
+            ufs_ticks += ufs_count() - t0;
             ufs_bytes += got * UFS_SECTOR;
             return 0;
         }
-        printf ("usbfat: own USB read failed at sector %d, using U-Boot's from now on\n",
+        printf("usbfat: own USB read failed at sector %d, using U-Boot's from now on\n",
                 start + got);
         ufs_bot_dev = 0;
-        if (!ufs_stick_present ()) {
+        if (!ufs_stick_present()) {
             ufs_lost = 1;
             return -1;
         }
     }
     ub_target = ufs_read_fn;
     got = ((ub_blk_read_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), start, count, buf);
-    ufs_ticks += ufs_count () - t0;
+    ufs_ticks += ufs_count() - t0;
     ufs_bytes += got * UFS_SECTOR;
     if (got != count) {
         ufs_lost = 1;
@@ -250,31 +250,31 @@ static int ufs_sectors (u32 start, u32 count, void *buf) {
     return 0;
 }
 
-static u32 ufs_fat_next (u32 c) {
+static u32 ufs_fat_next(u32 c) {
     u32 off = ufs_fat32 ? c * 4 : c * 2;
     u32 sec = ufs_fat_start + off / UFS_SECTOR;
     u32 v;
 
     if (sec != ufs_fat_cached) {
-        if (ufs_sectors (sec, 1, ufs_fatsec) < 0) {
+        if (ufs_sectors(sec, 1, ufs_fatsec) < 0) {
             return 0x0fffffffu;
         }
         ufs_fat_cached = sec;
     }
     off %= UFS_SECTOR;
     if (ufs_fat32) {
-        v = ufs_le32 (ufs_fatsec + off) & 0x0fffffffu;
+        v = ufs_le32(ufs_fatsec + off) & 0x0fffffffu;
         return v >= 0x0ffffff8u ? 0x0fffffffu : v;
     }
-    v = ufs_le16 (ufs_fatsec + off);
+    v = ufs_le16(ufs_fatsec + off);
     return v >= 0xfff8 ? 0x0fffffffu : v;
 }
 
-static inline int ufs_eoc (u32 c) {
+static inline int ufs_eoc(u32 c) {
     return c < 2 || c >= 0x0ffffff0u;
 }
 
-static inline u32 ufs_clus_sector (u32 c) {
+static inline u32 ufs_clus_sector(u32 c) {
     return ufs_data_start + (c - 2) * ufs_spc;
 }
 
@@ -286,83 +286,83 @@ static inline u32 ufs_clus_sector (u32 c) {
  * read takes < 0.1 s, so the constants are patched in U-Boot's code in RAM
  * to 1.5 s / 1 s, only if the instructions are the expected ones.
  */
-static void ufs_patch_ehci_timeouts (void) {
+static void ufs_patch_ehci_timeouts(void) {
 #ifndef UFS_NO_PORT_CHECK
-    const struct ub_build *bd = ub_build ();
+    const struct ub_build *bd = ub_build();
     volatile u32 *p;
     u32 a;
 
     if (!bd) {
         return;
     }
-    p = (volatile u32 *) (bd->ehci_tmo + ub_reloc_off ());
+    p = (volatile u32 *) (bd->ehci_tmo + ub_reloc_off());
 
     if (p[0] == 0x24102710u && p[1] == 0x24041388u) {     /* li s0,10000; li a0,5000 */
         p[0] = 0x24100000u | 1500;
         p[1] = 0x24040000u | 1000;
         for (a = (u32) p & ~31u; a < (u32) (p + 2); a += 32) {
-            __asm__ volatile ("cache 0x15, 0(%0)\n\tcache 0x10, 0(%0)" : : "r" (a) : "memory");
+            __asm__ volatile("cache 0x15, 0(%0)\n\tcache 0x10, 0(%0)" : : "r" (a) : "memory");
         }
-        __asm__ volatile ("sync" : : : "memory");
+        __asm__ volatile("sync" : : : "memory");
     }
 #endif
 }
 
 /* Returns 0, or -1 (message printed) */
-static int ufs_mount (void) {
+static int ufs_mount(void) {
     u32 part = 0, rsvd, nfats, rootents, fatsz, totsec, clusters, i;
     const unsigned char *b = ufs_sec;
 
-    if (!ub_build ()) {
-        printf ("usbfat: unknown U-Boot build (addresses in ubaddr.h)\n");
+    if (!ub_build()) {
+        printf("usbfat: unknown U-Boot build (addresses in ubaddr.h)\n");
         return -1;
     }
-    ufs_patch_ehci_timeouts ();
-    ub_target = ub_build ()->usb_stor_get_dev + ub_reloc_off ();
+    ufs_patch_ehci_timeouts();
+    ub_target = ub_build()->usb_stor_get_dev + ub_reloc_off();
     ufs_dev = ((ub_get_dev_t) (void *) ub_thunk) (0);
     if (!ufs_dev || *((unsigned char *) ufs_dev + 11) == 0xff) {
-        printf ("usbfat: no USB storage device (run 'usb start' first)\n");
+        printf("usbfat: no USB storage device (run 'usb start' first)\n");
         return -1;
     }
     if (*(u32 *) ((char *) ufs_dev + 20) != UFS_SECTOR) {
-        printf ("usbfat: block size %d not supported\n", *(u32 *) ((char *) ufs_dev + 20));
+        printf("usbfat: block size %d not supported\n", *(u32 *) ((char *) ufs_dev + 20));
         return -1;
     }
     ufs_read_fn = *(u32 *) ((char *) ufs_dev + 96);
-    ufs_bot_init ();
+    ufs_bot_init();
 
-    if (ufs_sectors (0, 1, ufs_sec) < 0 || b[510] != 0x55 || b[511] != 0xaa) {
-        printf ("usbfat: cannot read sector 0\n");
+    if (ufs_sectors(0, 1, ufs_sec) < 0 || b[510] != 0x55 || b[511] != 0xaa) {
+        printf("usbfat: cannot read sector 0\n");
         return -1;
     }
     /* No partition table if sector 0 already is a FAT boot sector */
-    if (!((b[0] == 0xeb || b[0] == 0xe9) && ufs_le16 (b + 11) == UFS_SECTOR &&
-          (!memcmp (b + 0x36, "FAT", 3) || !memcmp (b + 0x52, "FAT", 3)))) {
+    if (!((b[0] == 0xeb || b[0] == 0xe9) && ufs_le16(b + 11) == UFS_SECTOR &&
+          (!memcmp(b + 0x36, "FAT", 3) || !memcmp(b + 0x52, "FAT", 3)))) {
         for (i = 0; i < 4; i++) {
             const unsigned char *e = b + 0x1be + 16 * i;
             u32 t = e[4];
 
             if (t == 0x01 || t == 0x04 || t == 0x06 || t == 0x0b || t == 0x0c || t == 0x0e) {
-                part = ufs_le32 (e + 8);
+                part = ufs_le32(e + 8);
                 break;
             }
         }
-        if (i == 4 || ufs_sectors (part, 1, ufs_sec) < 0) {
-            printf ("usbfat: no FAT partition\n");
+        if (i == 4 || ufs_sectors(part, 1, ufs_sec) < 0) {
+            printf("usbfat: no FAT partition\n");
             return -1;
         }
     }
-    if (ufs_le16 (b + 11) != UFS_SECTOR || b[13] == 0) {
-        printf ("usbfat: bad FAT boot sector at %d\n", part);
+    if (ufs_le16(b + 11) != UFS_SECTOR || b[13] == 0) {
+        printf("usbfat: bad FAT boot sector at %d\n", part);
         return -1;
     }
     ufs_spc = b[13];
-    rsvd = ufs_le16 (b + 14);
+    rsvd = ufs_le16(b + 14);
     nfats = b[16];
-    rootents = ufs_le16 (b + 17);
-    totsec = ufs_le16 (b + 19) ? ufs_le16 (b + 19) : ufs_le32 (b + 32);
-    fatsz = ufs_le16 (b + 22) ? ufs_le16 (b + 22) : ufs_le32 (b + 36);
-    ufs_root_clus = ufs_le32 (b + 44);
+    rootents = ufs_le16(b + 17);
+    totsec = ufs_le16(b + 19) ? ufs_le16(b + 19) : ufs_le32(b + 32);
+    fatsz = ufs_le16(b + 22) ? ufs_le16(b + 22) : ufs_le32(b + 36);
+    ufs_root_clus = ufs_le32(b + 44);
 
     ufs_fat_start = part + rsvd;
     ufs_root_start = ufs_fat_start + nfats * fatsz;
@@ -371,19 +371,19 @@ static int ufs_mount (void) {
     clusters = (totsec - (ufs_data_start - part)) / ufs_spc;
     ufs_clus_bytes = ufs_spc * UFS_SECTOR;
     if (clusters < 4085) {
-        printf ("usbfat: FAT12 not supported\n");
+        printf("usbfat: FAT12 not supported\n");
         return -1;
     }
     ufs_fat32 = clusters >= 65525;
-    memset (ufs_dcache, 0, sizeof (ufs_dcache));
-    printf ("usbfat: FAT%d at sector %d, %d KB clusters, %s, %s\n", ufs_fat32 ? 32 : 16, part,
+    memset(ufs_dcache, 0, sizeof(ufs_dcache));
+    printf("usbfat: FAT%d at sector %d, %d KB clusters, %s, %s\n", ufs_fat32 ? 32 : 16, part,
             ufs_clus_bytes / 1024, (char *) ufs_dev + 65,
             ufs_bot_dev ? "fast reads" : "U-Boot reads");
     return 0;
 }
 
 /* Load the chunk holding f->pos into f->cbuf. Returns 0, or -1. */
-static int ufs_load (struct ufile *f) {
+static int ufs_load(struct ufile *f) {
     u32 idx = f->pos / ufs_clus_bytes;
     u32 sec_in = (f->pos % ufs_clus_bytes) / UFS_SECTOR;
     u32 count, need, c;
@@ -393,20 +393,20 @@ static int ufs_load (struct ufile *f) {
         f->clus_idx = 0;
     }
     while (f->clus_idx < idx) {
-        f->clus = ufs_fat_next (f->clus);
+        f->clus = ufs_fat_next(f->clus);
         f->clus_idx++;
-        if (ufs_eoc (f->clus)) {
+        if (ufs_eoc(f->clus)) {
             return -1;
         }
     }
-    if (ufs_eoc (f->clus)) {
+    if (ufs_eoc(f->clus)) {
         return -1;
     }
 
     /* Rest of this cluster, plus following clusters if contiguous */
     count = ufs_spc - sec_in;
     for (c = f->clus; count < UFS_CHUNK_SECTORS; c++) {
-        if (ufs_fat_next (c) != c + 1) {
+        if (ufs_fat_next(c) != c + 1) {
             break;
         }
         count += ufs_spc;
@@ -418,7 +418,7 @@ static int ufs_load (struct ufile *f) {
     if (count > need) {
         count = need;
     }
-    if (ufs_sectors (ufs_clus_sector (f->clus) + sec_in, count, f->cbuf) < 0) {
+    if (ufs_sectors(ufs_clus_sector(f->clus) + sec_in, count, f->cbuf) < 0) {
         return -1;
     }
     f->cstart = f->pos & ~(UFS_SECTOR - 1);
@@ -426,13 +426,13 @@ static int ufs_load (struct ufile *f) {
     return 0;
 }
 
-__attribute__ ((unused))
-static void ufs_seek (struct ufile *f, u32 pos) {
+__attribute__((unused))
+static void ufs_seek(struct ufile *f, u32 pos) {
     f->pos = pos < f->size ? pos : f->size;
 }
 
 /* Returns bytes read (0 at end of file or on error) */
-static u32 ufs_read (struct ufile *f, void *dst, u32 len) {
+static u32 ufs_read(struct ufile *f, void *dst, u32 len) {
     unsigned char *d = dst;
     u32 done = 0;
 
@@ -443,7 +443,7 @@ static u32 ufs_read (struct ufile *f, void *dst, u32 len) {
         u32 n;
 
         if (f->pos < f->cstart || f->pos >= f->cstart + f->clen) {
-            if (ufs_load (f) < 0) {
+            if (ufs_load(f) < 0) {
                 break;
             }
         }
@@ -451,22 +451,22 @@ static u32 ufs_read (struct ufile *f, void *dst, u32 len) {
         if (n > len - done) {
             n = len - done;
         }
-        memcpy (d + done, f->cbuf + (f->pos - f->cstart), n);
+        memcpy(d + done, f->cbuf + (f->pos - f->cstart), n);
         f->pos += n;
         done += n;
     }
     return done;
 }
 
-static int ufs_lower (int c) {
+static int ufs_lower(int c) {
     return (c >= 'A' && c <= 'Z') ? c + 32 : c;
 }
 
-static int ufs_name_eq (const char *a, const char *b, int blen) {
+static int ufs_name_eq(const char *a, const char *b, int blen) {
     int i;
 
     for (i = 0; i < blen; i++) {
-        if (!a[i] || ufs_lower (a[i]) != ufs_lower (b[i])) {
+        if (!a[i] || ufs_lower(a[i]) != ufs_lower(b[i])) {
             return 0;
         }
     }
@@ -487,7 +487,7 @@ struct udir {
     u32 sec_idx;                    /* next sector to load within cluster / root region */
     u32 ent, nent;                  /* entry in buf, entries loaded (nent = load more) */
     int done;
-    unsigned char buf[UFS_DIR_SECTORS * UFS_SECTOR] __attribute__ ((aligned (64)));
+    unsigned char buf[UFS_DIR_SECTORS * UFS_SECTOR] __attribute__((aligned(64)));
 };
 
 struct udirent {
@@ -496,7 +496,7 @@ struct udirent {
     int is_dir;
 };
 
-static void ufs_dir_start (struct udir *d, u32 first_clus) {
+static void ufs_dir_start(struct udir *d, u32 first_clus) {
     d->clus = first_clus;
     d->sec_idx = 0;
     d->ent = d->nent = 0;
@@ -504,7 +504,7 @@ static void ufs_dir_start (struct udir *d, u32 first_clus) {
 }
 
 /* Next raw 32-byte entry, or NULL at the end of the directory */
-static const unsigned char *ufs_dir_raw (struct udir *d) {
+static const unsigned char *ufs_dir_raw(struct udir *d) {
     if (d->done) {
         return 0;
     }
@@ -520,21 +520,21 @@ static const unsigned char *ufs_dir_raw (struct udir *d) {
             n = ufs_root_sectors - d->sec_idx;
         } else {
             if (d->sec_idx == ufs_spc) {
-                d->clus = ufs_fat_next (d->clus);
+                d->clus = ufs_fat_next(d->clus);
                 d->sec_idx = 0;
             }
-            if (ufs_eoc (d->clus)) {
+            if (ufs_eoc(d->clus)) {
                 d->done = 1;
                 return 0;
             }
-            sec = ufs_clus_sector (d->clus) + d->sec_idx;
+            sec = ufs_clus_sector(d->clus) + d->sec_idx;
             n = ufs_spc - d->sec_idx;
         }
         if (n > UFS_DIR_SECTORS) {
             n = UFS_DIR_SECTORS;
         }
         d->sec_idx += n;
-        if (ufs_sectors (sec, n, d->buf) < 0) {
+        if (ufs_sectors(sec, n, d->buf) < 0) {
             d->done = 1;
             return 0;
         }
@@ -546,12 +546,12 @@ static const unsigned char *ufs_dir_raw (struct udir *d) {
 
 /* Next file or folder (skips ".", "..", deleted entries, volume labels).
  * Returns 1 and fills *e, or 0 at the end. */
-static int ufs_readdir (struct udir *d, struct udirent *e) {
+static int ufs_readdir(struct udir *d, struct udirent *e) {
     static const unsigned char lfn_pos[13] = { 1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30 };
     const unsigned char *r;
     int lfn_ok = 0;
 
-    while ((r = ufs_dir_raw (d))) {
+    while ((r = ufs_dir_raw(d))) {
         int k, n;
 
         if (r[0] == 0) {
@@ -576,7 +576,7 @@ static int ufs_readdir (struct udir *d, struct udirent *e) {
                 lfn_ok = 1;
             }
             for (k = 0; k < 13 && seq * 13 + k < UFS_NAME_MAX - 1; k++) {
-                u32 ch = ufs_le16 (r + lfn_pos[k]);
+                u32 ch = ufs_le16(r + lfn_pos[k]);
 
                 if (ch == 0) {
                     e->name[seq * 13 + k] = 0;
@@ -608,8 +608,8 @@ static int ufs_readdir (struct udir *d, struct udirent *e) {
         }
         e->attr = r[11];
         e->is_dir = (r[11] & UFS_ATTR_DIR) != 0;
-        e->size = ufs_le32 (r + 28);
-        e->first = (ufs_fat32 ? ufs_le16 (r + 20) << 16 : 0) | ufs_le16 (r + 26);
+        e->size = ufs_le32(r + 28);
+        e->first = (ufs_fat32 ? ufs_le16(r + 20) << 16 : 0) | ufs_le16(r + 26);
         return 1;
     }
     return 0;
@@ -622,25 +622,25 @@ static int ufs_readdir (struct udir *d, struct udirent *e) {
  * in the same folder does not walk from the root each time. The stick is
  * read-only here, so entries never go stale while mounted. */
 
-static void ufs_dcache_put (const char *path, int len, u32 clus) {
+static void ufs_dcache_put(const char *path, int len, u32 clus) {
     int i;
 
-    if (len <= 0 || len >= (int) sizeof (ufs_dcache[0].path)) {
+    if (len <= 0 || len >= (int) sizeof(ufs_dcache[0].path)) {
         return;
     }
     for (i = 0; i < UFS_DCACHE; i++) {
-        if (ufs_name_eq (ufs_dcache[i].path, path, len)) {
+        if (ufs_name_eq(ufs_dcache[i].path, path, len)) {
             return;
         }
     }
-    memcpy (ufs_dcache[ufs_dcache_next].path, path, len);
+    memcpy(ufs_dcache[ufs_dcache_next].path, path, len);
     ufs_dcache[ufs_dcache_next].path[len] = 0;
     ufs_dcache[ufs_dcache_next].clus = clus;
     ufs_dcache_next = (ufs_dcache_next + 1) % UFS_DCACHE;
 }
 
 /* Longest cached folder that is a whole-component prefix of path */
-static int ufs_dcache_get (const char *path, u32 *clus) {
+static int ufs_dcache_get(const char *path, u32 *clus) {
     int i, best = 0;
 
     for (i = 0; i < UFS_DCACHE; i++) {
@@ -650,7 +650,7 @@ static int ufs_dcache_get (const char *path, u32 *clus) {
             len++;
         }
         if (len > best && (path[len] == '/' || path[len] == 0) &&
-            ufs_name_eq (ufs_dcache[i].path, path, len)) {
+            ufs_name_eq(ufs_dcache[i].path, path, len)) {
             best = len;
             *clus = ufs_dcache[i].clus;
         }
@@ -658,7 +658,7 @@ static int ufs_dcache_get (const char *path, u32 *clus) {
     return best;
 }
 
-static int ufs_lookup (const char *path, struct udirent *e) {
+static int ufs_lookup(const char *path, struct udirent *e) {
     static struct udir d;
     u32 clus = ufs_fat32 ? ufs_root_clus : 0;
     const char *full;
@@ -673,7 +673,7 @@ static int ufs_lookup (const char *path, struct udirent *e) {
     e->first = clus;
     e->size = 0;
     e->attr = UFS_ATTR_DIR;
-    skip = ufs_dcache_get (path, &clus);
+    skip = ufs_dcache_get(path, &clus);
     if (skip) {
         e->first = clus;
         path += skip;
@@ -692,9 +692,9 @@ static int ufs_lookup (const char *path, struct udirent *e) {
         if (!e->is_dir) {
             return -1;                              /* file used as a folder */
         }
-        ufs_dir_start (&d, clus);
-        while (ufs_readdir (&d, e)) {
-            if (ufs_name_eq (e->name, path, len)) {
+        ufs_dir_start(&d, clus);
+        while (ufs_readdir(&d, e)) {
+            if (ufs_name_eq(e->name, path, len)) {
                 found = 1;
                 break;
             }
@@ -707,7 +707,7 @@ static int ufs_lookup (const char *path, struct udirent *e) {
             clus = ufs_fat32 ? ufs_root_clus : 0;   /* ".." style link to root */
         }
         if (e->is_dir) {
-            ufs_dcache_put (full, end - full, clus);
+            ufs_dcache_put(full, end - full, clus);
         }
         path = end;
         while (*path == '/') {
@@ -718,22 +718,22 @@ static int ufs_lookup (const char *path, struct udirent *e) {
 }
 
 /* Open a folder for ufs_readdir (). Returns 0, or -1. */
-__attribute__ ((unused))
-static int ufs_opendir (struct udir *d, const char *path) {
+__attribute__((unused))
+static int ufs_opendir(struct udir *d, const char *path) {
     struct udirent e;
 
-    if (ufs_lookup (path, &e) < 0 || !e.is_dir) {
+    if (ufs_lookup(path, &e) < 0 || !e.is_dir) {
         return -1;
     }
-    ufs_dir_start (d, e.first == 0 && ufs_fat32 ? ufs_root_clus : e.first);
+    ufs_dir_start(d, e.first == 0 && ufs_fat32 ? ufs_root_clus : e.first);
     return 0;
 }
 
 /* Open a file by path. Returns 0, or -1 if not found or a folder. */
-static int ufs_open (struct ufile *f, const char *path) {
+static int ufs_open(struct ufile *f, const char *path) {
     struct udirent e;
 
-    if (ufs_lookup (path, &e) < 0 || e.is_dir) {
+    if (ufs_lookup(path, &e) < 0 || e.is_dir) {
         return -1;
     }
     f->first = e.first;
@@ -756,9 +756,9 @@ static int ufs_open (struct ufile *f, const char *path) {
  * usb_stor_write (block_dev_desc_t +100). data = 512 bytes.
  * Returns 0, or -1 (message printed).
  */
-__attribute__ ((unused))
-static int ufs_overwrite (const char *path, const void *data, const char *magic) {
-    typedef u32 (*ub_blk_write_t) (int dev, u32 start, u32 blkcnt, const void *buffer);
+__attribute__((unused))
+static int ufs_overwrite(const char *path, const void *data, const char *magic) {
+    typedef u32(*ub_blk_write_t) (int dev, u32 start, u32 blkcnt, const void *buffer);
     struct udirent e;
     u32 sec, write_fn, got;
     int mlen = 0;
@@ -766,47 +766,47 @@ static int ufs_overwrite (const char *path, const void *data, const char *magic)
     while (magic[mlen]) {
         mlen++;
     }
-    if (ufs_lookup (path, &e) < 0 || e.is_dir) {
-        printf ("usbfat: %s not found\n", path);
+    if (ufs_lookup(path, &e) < 0 || e.is_dir) {
+        printf("usbfat: %s not found\n", path);
         return -1;
     }
-    if (e.size != UFS_SECTOR || ufs_eoc (e.first)) {
-        printf ("usbfat: %s must be %d bytes (is %d)\n", path, UFS_SECTOR, e.size);
+    if (e.size != UFS_SECTOR || ufs_eoc(e.first)) {
+        printf("usbfat: %s must be %d bytes (is %d)\n", path, UFS_SECTOR, e.size);
         return -1;
     }
-    if (memcmp (data, magic, mlen)) {
-        printf ("usbfat: new data for %s does not start with the magic\n", path);
+    if (memcmp(data, magic, mlen)) {
+        printf("usbfat: new data for %s does not start with the magic\n", path);
         return -1;
     }
     write_fn = *(u32 *) ((char *) ufs_dev + 100);
     if (write_fn < 0x80000000u || write_fn >= 0x82000000u) {
-        printf ("usbfat: U-Boot has no USB write (0x%08x)\n", write_fn);
+        printf("usbfat: U-Boot has no USB write (0x%08x)\n", write_fn);
         return -1;
     }
-    sec = ufs_clus_sector (e.first);
-    if (ufs_sectors (sec, 1, ufs_sec) < 0 || memcmp (ufs_sec, magic, mlen)) {
-        printf ("usbfat: sector %d of %s does not hold the expected data, not writing\n", sec,
+    sec = ufs_clus_sector(e.first);
+    if (ufs_sectors(sec, 1, ufs_sec) < 0 || memcmp(ufs_sec, magic, mlen)) {
+        printf("usbfat: sector %d of %s does not hold the expected data, not writing\n", sec,
                 path);
         return -1;
     }
-    memcpy (ufs_sec, data, UFS_SECTOR);
+    memcpy(ufs_sec, data, UFS_SECTOR);
 #ifdef __mips__
     {
         u32 a;
 
         /* DMA reads RAM: write the cached copy back first */
         for (a = (u32) ufs_sec; a < (u32) ufs_sec + UFS_SECTOR; a += 32) {
-            __asm__ volatile ("cache 0x15, 0(%0)" : : "r" (a) : "memory");
+            __asm__ volatile("cache 0x15, 0(%0)" : : "r" (a) : "memory");
         }
-        __asm__ volatile ("sync" : : : "memory");
+        __asm__ volatile("sync" : : : "memory");
     }
 #endif
     ub_target = write_fn;
     got = ((ub_blk_write_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), sec, 1,
                                                 ufs_sec);
-    memset (ufs_sec, 0, UFS_SECTOR);
-    if (got != 1 || ufs_sectors (sec, 1, ufs_sec) < 0 || memcmp (ufs_sec, data, UFS_SECTOR)) {
-        printf ("usbfat: writing %s (sector %d) failed\n", path, sec);
+    memset(ufs_sec, 0, UFS_SECTOR);
+    if (got != 1 || ufs_sectors(sec, 1, ufs_sec) < 0 || memcmp(ufs_sec, data, UFS_SECTOR)) {
+        printf("usbfat: writing %s (sector %d) failed\n", path, sec);
         return -1;
     }
     return 0;

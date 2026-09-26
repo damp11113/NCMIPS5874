@@ -8,6 +8,6 @@
 #define O_TRUNC  0x200
 #define O_BINARY 0
 
-int open (const char *path, int flags, ...);
+int open(const char *path, int flags, ...);
 
 #endif

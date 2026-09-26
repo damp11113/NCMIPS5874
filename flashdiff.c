@@ -12,27 +12,27 @@
  */
 #include "uboot.h"
 
-static void dump (const char *tag, const unsigned char *p, u32 n) {
+static void dump(const char *tag, const unsigned char *p, u32 n) {
     u32 i;
 
-    printf ("    %s", tag);
+    printf("    %s", tag);
     for (i = 0; i < n; i++) {
-        printf ("%02x", p[i]);
+        printf("%02x", p[i]);
     }
-    printf ("\n");
+    printf("\n");
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     const unsigned char *a, *b;
     u32 len, i = 0, ranges = 0, total = 0;
 
     if (argc < 4) {
-        printf ("usage: go ${a} <flash copy> <reference> <length> (hex)\n");
+        printf("usage: go ${a} <flash copy> <reference> <length> (hex)\n");
         return 1;
     }
-    a = (const unsigned char *) parse_hex (argv[1]);
-    b = (const unsigned char *) parse_hex (argv[2]);
-    len = parse_hex (argv[3]);
+    a = (const unsigned char *) parse_hex(argv[1]);
+    b = (const unsigned char *) parse_hex(argv[2]);
+    len = parse_hex(argv[3]);
     while (i < len) {
         u32 start, end, gap;
 
@@ -56,11 +56,11 @@ int main (int argc, char *argv[]) {
         if (ranges <= 40) {
             u32 n = end - start < 32 ? end - start : 32;
 
-            printf ("diff 0x%06x-0x%06x (%d bytes)\n", start, end, end - start);
-            dump ("now: ", a + start, n);
-            dump ("was: ", b + start, n);
+            printf("diff 0x%06x-0x%06x (%d bytes)\n", start, end, end - start);
+            dump("now: ", a + start, n);
+            dump("was: ", b + start, n);
         }
     }
-    printf ("%d ranges, %d bytes differ\n", ranges, total);
+    printf("%d ranges, %d bytes differ\n", ranges, total);
     return 0;
 }

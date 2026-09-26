@@ -7,7 +7,7 @@
 
 typedef long clock_t;
 
-time_t time (time_t *t);
-clock_t clock (void);
+time_t time(time_t *t);
+clock_t clock(void);
 
 #endif

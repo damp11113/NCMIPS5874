@@ -32,15 +32,15 @@
 #define MP3S_COUNT_PER_MS   324000      /* CP0 Count rate (cpuinfo) / 1000 */
 
 /* Helix allocates its state once (~30 KB): a bump allocator is enough */
-static unsigned char helix_pool[48 * 1024] __attribute__ ((aligned (8)));
+static unsigned char helix_pool[48 * 1024] __attribute__((aligned(8)));
 static u32 helix_used;
 
-void *helix_malloc (int size) {
+void *helix_malloc(int size) {
     void *p;
 
     size = (size + 7) & ~7;
-    if (helix_used + size > sizeof (helix_pool)) {
-        printf ("mp3stream: helix_malloc (%d) out of pool\n", size);
+    if (helix_used + size > sizeof(helix_pool)) {
+        printf("mp3stream: helix_malloc (%d) out of pool\n", size);
         return 0;
     }
     p = helix_pool + helix_used;
@@ -48,7 +48,7 @@ void *helix_malloc (int size) {
     return p;
 }
 
-void helix_free (void *ptr) {
+void helix_free(void *ptr) {
     (void) ptr;
 }
 
@@ -67,12 +67,12 @@ static int mp3s_peak_l, mp3s_peak_r;
 static u32 mp3s_dec_ticks;              /* raw CP0 Count, wraps: use deltas */
 
 /* Streaming input (NULL refill = everything is in RAM already) */
-static int (*mp3s_refill) (unsigned char *dst, int max);
+static int(*mp3s_refill) (unsigned char *dst, int max);
 static unsigned char *mp3s_buf;
 static int mp3s_buf_size, mp3s_eof;
 
 /* Move what is left to the buffer start and top it up */
-static void mp3s_fill (void) {
+static void mp3s_fill(void) {
     int i, n;
 
     if (!mp3s_refill || mp3s_eof) {
@@ -82,7 +82,7 @@ static void mp3s_fill (void) {
         mp3s_buf[i] = mp3s_ptr[i];
     }
     mp3s_ptr = mp3s_buf;
-    n = mp3s_refill (mp3s_buf + mp3s_left, mp3s_buf_size - mp3s_left);
+    n = mp3s_refill(mp3s_buf + mp3s_left, mp3s_buf_size - mp3s_left);
     if (n <= 0) {
         mp3s_eof = 1;
     } else {
@@ -90,10 +90,10 @@ static void mp3s_fill (void) {
     }
 }
 
-static inline u32 mp3s_count (void) {
+static inline u32 mp3s_count(void) {
     u32 v;
 
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
@@ -101,7 +101,7 @@ static inline u32 mp3s_count (void) {
  * Decode the next good frame into dst as stereo pairs.
  * Returns the number of stereo frames, 0 at end of data.
  */
-static int mp3s_decode_frame (short *dst) {
+static int mp3s_decode_frame(short *dst) {
     for (;;) {
         unsigned char *frame_ptr;
         int off, err, n, i, frame_left;
@@ -110,14 +110,14 @@ static int mp3s_decode_frame (short *dst) {
         /* Keep >= 2 max-size frames buffered: Helix consumes the header
          * before it notices a frame is cut short */
         while (mp3s_refill && !mp3s_eof && mp3s_left < 2 * MAINBUF_SIZE) {
-            mp3s_fill ();
+            mp3s_fill();
         }
-        off = MP3FindSyncWord (mp3s_ptr, mp3s_left);
+        off = MP3FindSyncWord(mp3s_ptr, mp3s_left);
         if (off < 0) {
             if (mp3s_refill && !mp3s_eof) {
                 mp3s_ptr += mp3s_left > 3 ? mp3s_left - 3 : 0;  /* keep a split sync */
                 mp3s_left = mp3s_left > 3 ? 3 : mp3s_left;
-                mp3s_fill ();
+                mp3s_fill();
                 continue;
             }
             return 0;
@@ -127,9 +127,9 @@ static int mp3s_decode_frame (short *dst) {
 
         frame_ptr = mp3s_ptr;
         frame_left = mp3s_left;
-        t0 = mp3s_count ();
-        err = MP3Decode (mp3s_dec, &mp3s_ptr, &mp3s_left, mp3s_dec_out, 0);
-        d = mp3s_count () - t0;
+        t0 = mp3s_count();
+        err = MP3Decode(mp3s_dec, &mp3s_ptr, &mp3s_left, mp3s_dec_out, 0);
+        d = mp3s_count() - t0;
         mp3s_dec_ticks += d;
         mp3s_dec_acc += d;
         while (mp3s_dec_acc >= MP3S_COUNT_PER_MS) {
@@ -141,7 +141,7 @@ static int mp3s_decode_frame (short *dst) {
             if (mp3s_refill && !mp3s_eof) {
                 mp3s_ptr = frame_ptr;   /* frame cut at the buffer end: */
                 mp3s_left = frame_left; /* rewind, top up, try again */
-                mp3s_fill ();
+                mp3s_fill();
                 continue;
             }
             return 0;                   /* no more data: end */
@@ -158,7 +158,7 @@ static int mp3s_decode_frame (short *dst) {
             continue;
         }
 
-        MP3GetLastFrameInfo (mp3s_dec, &mp3s_info);
+        MP3GetLastFrameInfo(mp3s_dec, &mp3s_info);
         mp3s_frames_ok++;
         if (mp3s_info.nChans == 2) {
             n = mp3s_info.outputSamps / 2;
@@ -178,59 +178,59 @@ static int mp3s_decode_frame (short *dst) {
     }
 }
 
-static void mp3s_set_rate (u32 rate) {
+static void mp3s_set_rate(u32 rate) {
     mp3s_rate = rate;
     mp3s_step = (rate << 12) / 3000;    /* rate * 65536 / 48000, 16.16 */
 }
 
 /* Returns 0, or -1 if the decoder fails or no frame is found */
-static int mp3s_open (unsigned char *data, u32 len) {
+static int mp3s_open(unsigned char *data, u32 len) {
     mp3s_ptr = data;
     mp3s_left = len;
-    mp3s_dec = MP3InitDecoder ();
+    mp3s_dec = MP3InitDecoder();
     if (!mp3s_dec) {
-        printf ("mp3stream: MP3InitDecoder failed\n");
+        printf("mp3stream: MP3InitDecoder failed\n");
         return -1;
     }
-    mp3s_have = mp3s_decode_frame (mp3s_in);
+    mp3s_have = mp3s_decode_frame(mp3s_in);
     if (!mp3s_have) {
         return -1;
     }
-    mp3s_set_rate (mp3s_info.samprate);
+    mp3s_set_rate(mp3s_info.samprate);
     return 0;
 }
 
 /* Streaming: buf (a few KB or more) is refilled through refill () */
-__attribute__ ((unused))
-static int mp3s_open_stream (unsigned char *buf, int size, int (*refill) (unsigned char *, int)) {
+__attribute__((unused))
+static int mp3s_open_stream(unsigned char *buf, int size, int(*refill) (unsigned char *, int)) {
     mp3s_buf = buf;
     mp3s_buf_size = size;
     mp3s_refill = refill;
     mp3s_eof = 0;
     mp3s_left = 0;
     mp3s_ptr = buf;
-    mp3s_fill ();
-    return mp3s_open (buf, mp3s_left);
+    mp3s_fill();
+    return mp3s_open(buf, mp3s_left);
 }
 
 /* Streaming: drop all buffered input and decoded samples, e.g. after the
  * caller moved its file position (seek). The decoder resyncs on its own
  * (the first frames may report a bit-reservoir underflow and are skipped). */
-__attribute__ ((unused))
-static void mp3s_restart (void) {
+__attribute__((unused))
+static void mp3s_restart(void) {
     mp3s_ptr = mp3s_buf;
     mp3s_left = 0;
     mp3s_eof = 0;
     mp3s_have = 0;
     mp3s_pos = 0;
     mp3s_frac = 0;
-    mp3s_fill ();
+    mp3s_fill();
 }
 
 /* Feed the audio ring as far as it has room (max MP3S_CHUNK frames).
  * Returns 0 at end of data, else 1. */
-static int mp3s_pump (void) {
-    u32 n = audio_space ();
+static int mp3s_pump(void) {
+    u32 n = audio_space();
     u32 k = 0;
     int i, more = 1;
 
@@ -251,14 +251,14 @@ static int mp3s_pump (void) {
             }
             mp3s_have = keep;
             mp3s_pos = 0;
-            got = mp3s_decode_frame (mp3s_in + 2 * mp3s_have);
+            got = mp3s_decode_frame(mp3s_in + 2 * mp3s_have);
             if (!got) {
                 more = 0;
                 break;
             }
             mp3s_have += got;
             if ((u32) mp3s_info.samprate != mp3s_rate) {
-                mp3s_set_rate (mp3s_info.samprate);
+                mp3s_set_rate(mp3s_info.samprate);
             }
             continue;
         }
@@ -292,34 +292,34 @@ static int mp3s_pump (void) {
         mp3s_frac &= 0xffff;
     }
     if (k) {
-        audio_write (mp3s_pcm, k);
+        audio_write(mp3s_pcm, k);
         mp3s_out_frames += k;
     }
     return more;
 }
 
 /* Let what is still in the audio ring play out (max ~0.5 s) */
-__attribute__ ((unused))
-static void mp3s_drain (void) {
-    u32 start = get_timer (0);
+__attribute__((unused))
+static void mp3s_drain(void) {
+    u32 start = get_timer(0);
 
-    while ((AUD_REG (0x104) & AUD_MASK) > 0x40 && get_timer (start) < 500) {
-        udelay (1000);
+    while ((AUD_REG(0x104) & AUD_MASK) > 0x40 && get_timer(start) < 500) {
+        udelay(1000);
     }
 }
 
 /* One-line summary: frames, bad frames, decode time and CPU share */
-__attribute__ ((unused))
-static void mp3s_report (const char *who) {
+__attribute__((unused))
+static void mp3s_report(const char *who) {
     u32 audio_ms = mp3s_out_frames / (AUD_RATE / 1000);
 
-    printf ("%s: %d MP3 frames, %d bad, decode %d ms for %d ms audio", who,
+    printf("%s: %d MP3 frames, %d bad, decode %d ms for %d ms audio", who,
             mp3s_frames_ok, mp3s_errors, mp3s_dec_ms, audio_ms);
     if (audio_ms) {
-        printf (" (%d.%d %% CPU)", mp3s_dec_ms * 100 / audio_ms,
+        printf(" (%d.%d %% CPU)", mp3s_dec_ms * 100 / audio_ms,
                 (mp3s_dec_ms * 1000 / audio_ms) % 10);
     }
-    printf ("\n");
+    printf("\n");
 }
 
 #endif

@@ -83,16 +83,16 @@ static unsigned age_counter;
 static unsigned short cb_gain[MAX_CB + 1];      /* Q15 amplitude of -cB */
 static double cent_tab[1200];                   /* 2^(c/1200) */
 
-static uint32_t rd16 (const unsigned char *p) {
+static uint32_t rd16(const unsigned char *p) {
     return p[0] | (p[1] << 8);
 }
 
-static uint32_t rd32 (const unsigned char *p) {
+static uint32_t rd32(const unsigned char *p) {
     return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t) p[3] << 24);
 }
 
 /* 2^(cents / 1200) */
-static double pow2c (double cents) {
+static double pow2c(double cents) {
     int c = (int) (cents >= 0 ? cents + 0.5 : cents - 0.5), oct = 0;
     double r;
 
@@ -114,18 +114,18 @@ static double pow2c (double cents) {
 }
 
 /* Timecents -> samples at 48 kHz (-32768 = 0) */
-static int tc_samples (int tc) {
+static int tc_samples(int tc) {
     double s;
 
     if (tc <= -12000) {
         return 0;
     }
-    s = pow2c (tc) * SYNTH_RATE;
+    s = pow2c(tc) * SYNTH_RATE;
     return s > 1e8 ? 100000000 : (int) s;
 }
 
 /* 40 log10 (127 / v) in cB, as a table-free approximation via cb_gain */
-static int amp_to_cb (int v) {
+static int amp_to_cb(int v) {
     int target, lo = 0, hi = MAX_CB;
 
     if (v >= 127) {
@@ -148,7 +148,7 @@ static int amp_to_cb (int v) {
     return lo;
 }
 
-static void build_tables (void) {
+static void build_tables(void) {
     double g = 32767.0, r = 1.0, x = 0.6931471805599453 / 1200;
     double step = 1 + x + x * x / 2 + x * x * x / 6;
     int i;
@@ -174,12 +174,12 @@ static const short gen_default[G_COUNT] = {
 };
 
 /* Apply generators [from, to) of a gen list to g (set = 1: override) */
-static void apply_gens (short *g, const unsigned char *gens, int from, int to, int set) {
+static void apply_gens(short *g, const unsigned char *gens, int from, int to, int set) {
     int i;
 
     for (i = from; i < to; i++) {
-        int op = rd16 (gens + i * 4);
-        short amt = (short) rd16 (gens + i * 4 + 2);
+        int op = rd16(gens + i * 4);
+        short amt = (short) rd16(gens + i * 4 + 2);
 
         if (op >= G_COUNT) {
             continue;
@@ -194,43 +194,43 @@ static void apply_gens (short *g, const unsigned char *gens, int from, int to, i
     }
 }
 
-static int zone_last_gen (const unsigned char *bags, const unsigned char *gens, int ngens, int b) {
-    int from = rd16 (bags + b * 4), to = rd16 (bags + (b + 1) * 4);
+static int zone_last_gen(const unsigned char *bags, const unsigned char *gens, int ngens, int b) {
+    int from = rd16(bags + b * 4), to = rd16(bags + (b + 1) * 4);
 
     if (to <= from || to > ngens) {
         return -1;
     }
-    return rd16 (gens + (to - 1) * 4);
+    return rd16(gens + (to - 1) * 4);
 }
 
-static int in_range (short range, int v) {
+static int in_range(short range, int v) {
     int lo = range & 0xff, hi = (range >> 8) & 0xff;
 
     return v >= lo && v <= hi;
 }
 
-static int find_preset (int bank, int prog) {
+static int find_preset(int bank, int prog) {
     int i;
 
     for (i = 0; i < nphdr - 1; i++) {
-        if ((int) rd16 (phdr + i * 38 + 20) == prog && (int) rd16 (phdr + i * 38 + 22) == bank) {
+        if ((int) rd16(phdr + i * 38 + 20) == prog && (int) rd16(phdr + i * 38 + 22) == bank) {
             return i;
         }
     }
     return -1;
 }
 
-static void start_voice (int ch, int key, int vel, const short *g);
+static void start_voice(int ch, int key, int vel, const short *g);
 
-static void play_zones (int ch, int key, int vel, int preset) {
-    int pb0 = rd16 (phdr + preset * 38 + 24), pb1 = rd16 (phdr + (preset + 1) * 38 + 24);
+static void play_zones(int ch, int key, int vel, int preset) {
+    int pb0 = rd16(phdr + preset * 38 + 24), pb1 = rd16(phdr + (preset + 1) * 38 + 24);
     short pglobal[G_COUNT];
     int b;
 
-    memset (pglobal, 0, sizeof (pglobal));
+    memset(pglobal, 0, sizeof(pglobal));
     pglobal[G_KEYRANGE] = pglobal[G_VELRANGE] = 0x7f00;
-    if (pb1 - pb0 > 1 && zone_last_gen (pbag, pgen, npgen, pb0) != G_INSTRUMENT) {
-        apply_gens (pglobal, pgen, rd16 (pbag + pb0 * 4), rd16 (pbag + (pb0 + 1) * 4), 1);
+    if (pb1 - pb0 > 1 && zone_last_gen(pbag, pgen, npgen, pb0) != G_INSTRUMENT) {
+        apply_gens(pglobal, pgen, rd16(pbag + pb0 * 4), rd16(pbag + (pb0 + 1) * 4), 1);
         pb0++;
     }
     for (b = pb0; b < pb1 && b < npbag - 1; b++) {
@@ -238,33 +238,33 @@ static void play_zones (int ch, int key, int vel, int preset) {
         int ins, ib0, ib1, ib;
         short iglobal[G_COUNT];
 
-        memcpy (pz, pglobal, sizeof (pz));
-        apply_gens (pz, pgen, rd16 (pbag + b * 4), rd16 (pbag + (b + 1) * 4), 1);
-        if (zone_last_gen (pbag, pgen, npgen, b) != G_INSTRUMENT ||
-            !in_range (pz[G_KEYRANGE], key) || !in_range (pz[G_VELRANGE], vel)) {
+        memcpy(pz, pglobal, sizeof(pz));
+        apply_gens(pz, pgen, rd16(pbag + b * 4), rd16(pbag + (b + 1) * 4), 1);
+        if (zone_last_gen(pbag, pgen, npgen, b) != G_INSTRUMENT ||
+            !in_range(pz[G_KEYRANGE], key) || !in_range(pz[G_VELRANGE], vel)) {
             continue;
         }
         ins = pz[G_INSTRUMENT];
         if (ins < 0 || ins >= ninst - 1) {
             continue;
         }
-        ib0 = rd16 (inst + ins * 22 + 20);
-        ib1 = rd16 (inst + (ins + 1) * 22 + 20);
-        memcpy (iglobal, gen_default, sizeof (iglobal));
-        if (ib1 - ib0 > 1 && zone_last_gen (ibag, igen, nigen, ib0) != G_SAMPLEID) {
-            apply_gens (iglobal, igen, rd16 (ibag + ib0 * 4), rd16 (ibag + (ib0 + 1) * 4), 1);
+        ib0 = rd16(inst + ins * 22 + 20);
+        ib1 = rd16(inst + (ins + 1) * 22 + 20);
+        memcpy(iglobal, gen_default, sizeof(iglobal));
+        if (ib1 - ib0 > 1 && zone_last_gen(ibag, igen, nigen, ib0) != G_SAMPLEID) {
+            apply_gens(iglobal, igen, rd16(ibag + ib0 * 4), rd16(ibag + (ib0 + 1) * 4), 1);
             ib0++;
         }
         for (ib = ib0; ib < ib1 && ib < nibag - 1; ib++) {
             short g[G_COUNT];
             int k;
 
-            if (zone_last_gen (ibag, igen, nigen, ib) != G_SAMPLEID) {
+            if (zone_last_gen(ibag, igen, nigen, ib) != G_SAMPLEID) {
                 continue;
             }
-            memcpy (g, iglobal, sizeof (g));
-            apply_gens (g, igen, rd16 (ibag + ib * 4), rd16 (ibag + (ib + 1) * 4), 1);
-            if (!in_range (g[G_KEYRANGE], key) || !in_range (g[G_VELRANGE], vel)) {
+            memcpy(g, iglobal, sizeof(g));
+            apply_gens(g, igen, rd16(ibag + ib * 4), rd16(ibag + (ib + 1) * 4), 1);
+            if (!in_range(g[G_KEYRANGE], key) || !in_range(g[G_VELRANGE], vel)) {
                 continue;
             }
             /* Preset values add to the instrument's (not for sample / range gens) */
@@ -275,28 +275,28 @@ static void play_zones (int ch, int key, int vel, int preset) {
                 }
                 g[k] += pz[k];
             }
-            start_voice (ch, key, vel, g);
+            start_voice(ch, key, vel, g);
         }
     }
 }
 
 /* ---- voices ---- */
 
-static void update_step (struct voice *v) {
+static void update_step(struct voice *v) {
     const struct chan *c = &chans[v->chan];
     double cents = v->pitch_cents + (c->bend - 8192) * c->bend_range * 100.0 / 8192;
-    double ratio = pow2c (cents) * v->rate / SYNTH_RATE;
+    double ratio = pow2c(cents) * v->rate / SYNTH_RATE;
 
     v->step = (uint32_t) (ratio * 65536.0);
 }
 
-static int chan_cb (int ch) {
-    return amp_to_cb (chans[ch].volume) + amp_to_cb (chans[ch].expression);
+static int chan_cb(int ch) {
+    return amp_to_cb(chans[ch].volume) + amp_to_cb(chans[ch].expression);
 }
 
 int synth_sf2_limit = NVOICES;
 
-static int alloc_voice (void) {
+static int alloc_voice(void) {
     int i, best = -1, best_cb = -1, free_i = -1, n = 0;
     unsigned best_age = ~0u;
 
@@ -330,7 +330,7 @@ static int alloc_voice (void) {
     return best;
 }
 
-static void start_voice (int ch, int key, int vel, const short *g) {
+static void start_voice(int ch, int key, int vel, const short *g) {
     const unsigned char *sh;
     struct sample s;
     struct voice *v;
@@ -341,14 +341,14 @@ static void start_voice (int ch, int key, int vel, const short *g) {
         return;
     }
     sh = shdr + g[G_SAMPLEID] * 46;
-    s.start = rd32 (sh + 20);
-    s.end = rd32 (sh + 24);
-    s.loop_start = rd32 (sh + 28);
-    s.loop_end = rd32 (sh + 32);
-    s.rate = rd32 (sh + 36);
+    s.start = rd32(sh + 20);
+    s.end = rd32(sh + 24);
+    s.loop_start = rd32(sh + 28);
+    s.loop_end = rd32(sh + 32);
+    s.rate = rd32(sh + 36);
     s.root = sh[40];
     s.correction = (signed char) sh[41];
-    s.type = rd16 (sh + 44);
+    s.type = rd16(sh + 44);
     if (s.type & 0x8000 || s.rate == 0) {
         return;                                 /* ROM sample */
     }
@@ -371,8 +371,8 @@ static void start_voice (int ch, int key, int vel, const short *g) {
         }
     }
 
-    v = &voices[alloc_voice ()];
-    memset (v, 0, sizeof (*v));
+    v = &voices[alloc_voice()];
+    memset(v, 0, sizeof(*v));
     k = g[G_KEYNUM] >= 0 ? g[G_KEYNUM] : key;
     vl = g[G_VELOCITY] >= 0 ? g[G_VELOCITY] : vel;
     root = g[G_ROOTKEY] >= 0 ? g[G_ROOTKEY] : (s.root > 127 ? 60 : s.root);
@@ -395,30 +395,30 @@ static void start_voice (int ch, int key, int vel, const short *g) {
     v->rate = s.rate;
     v->pitch_cents = (k - root) * g[G_SCALETUNING] + g[G_COARSETUNE] * 100 + g[G_FINETUNE] +
                      s.correction;
-    update_step (v);
+    update_step(v);
 
     /* Initial attenuation x 0.4, as FluidSynth (ALT_ATTENUATION_SCALE) and
      * the EMU hardware most SoundFonts were tuned on: with the plain cB of
      * the spec, e.g. Yamaha MA2 came out 18 dB quieter than E-mu's set. */
-    v->base_cb = g[G_ATTENUATION] * 2 / 5 + amp_to_cb (vl) + chan_cb (ch);
+    v->base_cb = g[G_ATTENUATION] * 2 / 5 + amp_to_cb(vl) + chan_cb(ch);
     if (v->base_cb < 0) {
         v->base_cb = 0;
     }
     v->pan = g[G_PAN] + (chans[ch].pan - 64) * 1000 / 127;
     v->pan = v->pan < -500 ? -500 : v->pan > 500 ? 500 : v->pan;
 
-    v->delay_n = tc_samples (g[G_DELAYENV]);
-    v->attack_n = tc_samples (g[G_ATTACKENV]);
-    v->hold_n = tc_samples (g[G_HOLDENV] + g[G_KEYHOLD] * (60 - k));
-    v->decay_n = tc_samples (g[G_DECAYENV] + g[G_KEYDECAY] * (60 - k));
-    v->release_n = tc_samples (g[G_RELEASEENV]);
+    v->delay_n = tc_samples(g[G_DELAYENV]);
+    v->attack_n = tc_samples(g[G_ATTACKENV]);
+    v->hold_n = tc_samples(g[G_HOLDENV] + g[G_KEYHOLD] * (60 - k));
+    v->decay_n = tc_samples(g[G_DECAYENV] + g[G_KEYDECAY] * (60 - k));
+    v->release_n = tc_samples(g[G_RELEASEENV]);
     v->sustain_cb = g[G_SUSTAINENV] < 0 ? 0 : g[G_SUSTAINENV] > 1440 ? 1440 : g[G_SUSTAINENV];
     v->env = ENV_DELAY;
     v->env_t = 0;
     v->env_cb = 0;
 }
 
-static void release_voice (struct voice *v) {
+static void release_voice(struct voice *v) {
     if (v->released) {
         return;
     }
@@ -430,7 +430,7 @@ static void release_voice (struct voice *v) {
     if (v->env == ENV_ATTACK) {                 /* from the current linear level */
         int lin = v->attack_n ? (int) ((long long) v->env_t * 32767 / v->attack_n) : 32767;
 
-        v->env_cb = amp_to_cb ((int) (127 * (long long) lin / 32767)) / 2 * 256;
+        v->env_cb = amp_to_cb((int) (127 * (long long) lin / 32767)) / 2 * 256;
     }
     v->env = ENV_RELEASE;
     v->env_t = 0;
@@ -442,7 +442,7 @@ static void release_voice (struct voice *v) {
 }
 
 /* Envelope for the next BLOCK samples -> gain_l / gain_r */
-static void envelope (struct voice *v) {
+static void envelope(struct voice *v) {
     int cb, lin = 32767;
 
     switch (v->env) {
@@ -525,7 +525,7 @@ static void envelope (struct voice *v) {
  * registers when left / right are written through pointers). Silent voices
  * (gain 0, e.g. quiet attack start) only move their position.
  */
-static void mix_voice (struct voice *v, int *left, int *right, int n) {
+static void mix_voice(struct voice *v, int *left, int *right, int n) {
     const short *d = v->data;
     uint32_t pos = v->pos, frac = v->frac, step = v->step;
     int gl = v->gain_l, gr = v->gain_r;
@@ -590,25 +590,25 @@ run:
 
 /* ---- synth interface ---- */
 
-static void s_note_on (int ch, int key, int vel) {
+static void s_note_on(int ch, int key, int vel) {
     int p, bank = ch == 9 ? 128 : chans[ch].bank;
 
     if (!phdr) {
         return;
     }
-    p = find_preset (bank, chans[ch].program);
+    p = find_preset(bank, chans[ch].program);
     if (p < 0) {
-        p = find_preset (ch == 9 ? 128 : 0, ch == 9 ? 0 : chans[ch].program);
+        p = find_preset(ch == 9 ? 128 : 0, ch == 9 ? 0 : chans[ch].program);
     }
     if (p < 0) {
-        p = find_preset (0, 0);
+        p = find_preset(0, 0);
     }
     if (p >= 0) {
-        play_zones (ch, key, vel, p);
+        play_zones(ch, key, vel, p);
     }
 }
 
-static void s_note_off (int ch, int key) {
+static void s_note_off(int ch, int key) {
     int i;
 
     for (i = 0; i < NVOICES; i++) {
@@ -618,19 +618,19 @@ static void s_note_off (int ch, int key) {
             if (chans[ch].sustain) {
                 v->sustained = 1;
             } else {
-                release_voice (v);
+                release_voice(v);
             }
         }
     }
 }
 
-static void s_program (int ch, int prog) {
+static void s_program(int ch, int prog) {
     chans[ch].program = prog & 127;
 }
 
-static void s_control (int ch, int cc, int val) {
+static void s_control(int ch, int cc, int val) {
     struct chan *c = &chans[ch];
-    int i, old = chan_cb (ch);
+    int i, old = chan_cb(ch);
 
     switch (cc) {
     case 0:
@@ -645,7 +645,7 @@ static void s_control (int ch, int cc, int val) {
         }
         for (i = 0; i < NVOICES; i++) {
             if (voices[i].active && voices[i].chan == ch) {
-                voices[i].base_cb += chan_cb (ch) - old;
+                voices[i].base_cb += chan_cb(ch) - old;
             }
         }
         break;
@@ -658,7 +658,7 @@ static void s_control (int ch, int cc, int val) {
             for (i = 0; i < NVOICES; i++) {
                 if (voices[i].active && voices[i].chan == ch && voices[i].sustained) {
                     voices[i].sustained = 0;
-                    release_voice (&voices[i]);
+                    release_voice(&voices[i]);
                 }
             }
         }
@@ -684,7 +684,7 @@ static void s_control (int ch, int cc, int val) {
     case 123:
         for (i = 0; i < NVOICES; i++) {
             if (voices[i].active && voices[i].chan == ch) {
-                release_voice (&voices[i]);
+                release_voice(&voices[i]);
             }
         }
         break;
@@ -696,21 +696,21 @@ static void s_control (int ch, int cc, int val) {
     }
 }
 
-static void s_bend (int ch, int value) {
+static void s_bend(int ch, int value) {
     int i;
 
     chans[ch].bend = value;
     for (i = 0; i < NVOICES; i++) {
         if (voices[i].active && voices[i].chan == ch) {
-            update_step (&voices[i]);
+            update_step(&voices[i]);
         }
     }
 }
 
-static void s_reset (void) {
+static void s_reset(void) {
     int i;
 
-    memset (voices, 0, sizeof (voices));
+    memset(voices, 0, sizeof(voices));
     for (i = 0; i < 16; i++) {
         chans[i].program = 0;
         chans[i].bank = 0;
@@ -724,7 +724,7 @@ static void s_reset (void) {
     }
 }
 
-static void s_render (int *left, int *right, int n) {
+static void s_render(int *left, int *right, int n) {
     while (n > 0) {
         int m = n > BLOCK ? BLOCK : n, i;
 
@@ -734,9 +734,9 @@ static void s_render (int *left, int *right, int n) {
             if (!v->active) {
                 continue;
             }
-            envelope (v);
+            envelope(v);
             if (v->active && v->env != ENV_DELAY) {
-                mix_voice (v, left, right, m);
+                mix_voice(v, left, right, m);
             }
         }
         left += m;
@@ -745,7 +745,7 @@ static void s_render (int *left, int *right, int n) {
     }
 }
 
-static int s_voices (void) {
+static int s_voices(void) {
     int i, n = 0;
 
     for (i = 0; i < NVOICES; i++) {
@@ -754,26 +754,26 @@ static int s_voices (void) {
     return n;
 }
 
-const char *synth_sf2_name (void) {
+const char *synth_sf2_name(void) {
     return sf_name;
 }
 
-int synth_sf2_init (unsigned char *sf, long len) {
+int synth_sf2_init(unsigned char *sf, long len) {
     long pos = 12;
 
     phdr = pbag = pgen = inst = ibag = igen = shdr = 0;
     smpl = 0;
     sf_name[0] = 0;
-    if (len < 12 || memcmp (sf, "RIFF", 4) || memcmp (sf + 8, "sfbk", 4)) {
-        printf ("synth_sf2: not a SoundFont 2 file\n");
+    if (len < 12 || memcmp(sf, "RIFF", 4) || memcmp(sf + 8, "sfbk", 4)) {
+        printf("synth_sf2: not a SoundFont 2 file\n");
         return -1;
     }
-    build_tables ();
+    build_tables();
     while (pos + 12 <= len) {
-        uint32_t clen = rd32 (sf + pos + 4);
+        uint32_t clen = rd32(sf + pos + 4);
         long lpos = pos + 12, lend = pos + 8 + clen;
 
-        if (memcmp (sf + pos, "LIST", 4)) {
+        if (memcmp(sf + pos, "LIST", 4)) {
             pos += 8 + ((clen + 1) & ~1u);
             continue;
         }
@@ -782,40 +782,40 @@ int synth_sf2_init (unsigned char *sf, long len) {
         }
         while (lpos + 8 <= lend) {
             const unsigned char *id = sf + lpos, *d = sf + lpos + 8;
-            uint32_t sz = rd32 (sf + lpos + 4);
+            uint32_t sz = rd32(sf + lpos + 4);
 
             if (lpos + 8 + (long) sz > lend) {
                 sz = lend - lpos - 8;
             }
-            if (!memcmp (id, "INAM", 4)) {
+            if (!memcmp(id, "INAM", 4)) {
                 uint32_t k;
 
-                for (k = 0; k < sz && k < sizeof (sf_name) - 1 && d[k]; k++) {
+                for (k = 0; k < sz && k < sizeof(sf_name) - 1 && d[k]; k++) {
                     sf_name[k] = (d[k] >= 32 && d[k] < 127) ? d[k] : '?';
                 }
                 sf_name[k] = 0;
-            } else if (!memcmp (id, "smpl", 4)) {
+            } else if (!memcmp(id, "smpl", 4)) {
                 smpl = (const short *) d;
                 nsmpl = sz / 2;
-            } else if (!memcmp (id, "phdr", 4)) {
+            } else if (!memcmp(id, "phdr", 4)) {
                 phdr = d;
                 nphdr = sz / 38;
-            } else if (!memcmp (id, "pbag", 4)) {
+            } else if (!memcmp(id, "pbag", 4)) {
                 pbag = d;
                 npbag = sz / 4;
-            } else if (!memcmp (id, "pgen", 4)) {
+            } else if (!memcmp(id, "pgen", 4)) {
                 pgen = d;
                 npgen = sz / 4;
-            } else if (!memcmp (id, "inst", 4)) {
+            } else if (!memcmp(id, "inst", 4)) {
                 inst = d;
                 ninst = sz / 22;
-            } else if (!memcmp (id, "ibag", 4)) {
+            } else if (!memcmp(id, "ibag", 4)) {
                 ibag = d;
                 nibag = sz / 4;
-            } else if (!memcmp (id, "igen", 4)) {
+            } else if (!memcmp(id, "igen", 4)) {
                 igen = d;
                 nigen = sz / 4;
-            } else if (!memcmp (id, "shdr", 4)) {
+            } else if (!memcmp(id, "shdr", 4)) {
                 shdr = d;
                 nshdr = sz / 46;
             }
@@ -824,17 +824,17 @@ int synth_sf2_init (unsigned char *sf, long len) {
         pos += 8 + ((clen + 1) & ~1u);
     }
     if (!phdr || !pbag || !pgen || !inst || !ibag || !igen || !shdr || !smpl || nphdr < 2) {
-        printf ("synth_sf2: incomplete SoundFont\n");
+        printf("synth_sf2: incomplete SoundFont\n");
         phdr = 0;
         return -1;
     }
     if (((uintptr_t) smpl) & 1) {
-        printf ("synth_sf2: sample data not 16-bit aligned\n");
+        printf("synth_sf2: sample data not 16-bit aligned\n");
         phdr = 0;
         return -1;
     }
-    s_reset ();
-    printf ("synth_sf2: \"%s\", %d presets, %d instruments, %d samples, %d KB sample data\n",
+    s_reset();
+    printf("synth_sf2: \"%s\", %d presets, %d instruments, %d samples, %d KB sample data\n",
             sf_name, nphdr - 1, ninst - 1, nshdr - 1, nsmpl * 2 / 1024);
     return 0;
 }

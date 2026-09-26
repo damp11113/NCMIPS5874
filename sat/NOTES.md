@@ -71,7 +71,10 @@ The stock firmware uses only the low 64 MB (AV core at 0x83e10000, video memory 
 - Panel 650G11B: 3 digits + green LED D1 on the FD650's 4 digit registers. Segment wiring is
   not standard: standard bit a b c d e f g dot -> FD650 bit 6 0 2 4 5 7 1 3 (stock font table
   at 0x8076e6ac, character + segments pairs, `fd650_map ()`).
-- Layout (fptest run 2, panel font '1' '2' '3' '4' in regs 0-3 showed "3 4 2", LED off):
+- Layout: digits left to right = regs 2, 3, 1; reg 0 drives nothing. **LED = reg 1 bit 3** (the right
+  digit's dot; fptest walk 2026-09-26). The earlier guess "reg 0 bit 1" was wrong: run 1 had reg 1 =
+  0x5b (bit 3 set, LED on), run 2 reg 1 = 0x73 (LED off). fd650.h keeps a copy of the registers so
+  the digit and the LED do not overwrite each other.
   digits left to right = regs 2, 3, 1; reg 0 = LED only. Run 1 lit the LED with reg 0 = 0x06,
   run 2 did not with 0x05 -> LED = reg 0 bit 1 (not yet walked). Dots are not wired.
   (Stock "LED" call sets bit 7 of reg 3 = a segment here: purpose unknown.)
@@ -125,3 +128,48 @@ The stock firmware uses only the low 64 MB (AV core at 0x83e10000, video memory 
   0xa0000 (sf write from 0x81800000, cmp.b 4096 bytes same). Power-on with the stick -> NCAPPS,
   without -> stock firmware (both verified). Undo: `usb start; fatload usb 0 0x82000000
   flash_s2.bin; sf probe 0; sf erase 0xa0000 0x10000; sf write 0x820a0000 0xa0000 0x10000`.
+
+## Front panel in NCAPPS (2026-09-26, built, NOT staged / run yet)
+
+- SDK: `sdk_key_poll` reads the front keys every 30 ms on the satellite box (CH+/CH- = UP/DOWN,
+  VOL-/VOL+ = LEFT/RIGHT, OK, MENU; auto-repeat after 400 ms, every 120 ms). `sdk_panel_show`,
+  `sdk_panel_led` (no-ops on the IPTV box). `fd650_char` now has the stock font's letters
+  (A b C c d E F H h L n N O o P r S t U -).
+- Launcher: LED on; display "---" at start and while an app starts, the selected entry number in
+  the menu, "SEt" on the settings page, "Err" on the crash screen, blank in standby. Settings page
+  hides "Big memory" on the satellite box (SETTINGS.TXT bigmem kept for the IPTV box); front MENU
+  also wakes from soft standby. About page names the right SoC per box.
+- MIDI / music players (built, not staged): front display shows active voices (MIDI) or the
+  playing time (music: "123" = 1:23, from 10 min "12-"), "PAU" paused, "U80" / "120" volume for
+  1.5 s after LEFT/RIGHT; updated every 200 ms, also with the screen saver on; "---" when leaving
+  the player. `sdk_panel_show` only writes when the text changes.
+- App config manager (SDK): `sdk_config_load / get / get_int / set / set_int / save`, file
+  NCAPPS/APPSDATA/<app>/CONFIG.TXT (512 B, magic "# NCAPPS app config", key=value lines, max 16
+  keys), overwritten in place like SETTINGS.TXT; stage.sh creates it per app only when missing.
+- Front LED: launcher menu off; standby = 3 blinks then off; crash screen fast blink with "Err".
+  MIDI: MENU cycles blink per quarter note / whole note (4 beats) / second (display "b 4" / "b 1" /
+  "SEc", saved as led=quarter|whole|second), beat position from `smf_position_beats_q16` (follows
+  tempo changes); paused = steady on. Music: blink per second (half on), paused steady; time from
+  10 min alternates "12-" / "-34" every second. `sdk_panel_led` / `sdk_panel_show` write only on
+  change; the launcher calls `sdk_panel_invalidate` after each app. (Built + staged, not run yet.)
+
+## WARNING: U-Boot "flash window" at 0x80000000 (both boxes, 2026-09-26)
+
+- Vendor U-Boot registers the 8 MB SPI flash as a dataflash bank starting at 0x80000000
+  (`addr_dataflash` 0x8011e8d0 in the satellite build: flash_info start <= addr <= start + size - 1).
+  `loady` (and U-Boot's `cp`, same check) to 0x80000000-0x807fffff ERASES AND PROGRAMS THE FLASH
+  (log: `erase start_from[0x8000]to[0x9000] sec_cnt[0x1]`, `flash_wr_pio`) instead of writing RAM.
+- Happened once on the satellite box: `loady 0x80008000` with cpuinfo.bin (3728 B) printed the
+  erase/write messages and did not load RAM (go hung). Checked afterwards with sf read + crc32 in
+  64 KB / 4 KB pieces against flash_s2.bin: the SPI flash is unchanged except expected stock
+  records (0x120000, 0x5a2000-0x5a3000, 0x5b0000 / 0x5d0000 settings copies) and our boot.scr
+  at 0xa0000; flash 0x8000 is still 0xff and cpuinfo is nowhere in the flash. So the vendor loady
+  writes some other device (unknown), not the SPI flash - still never use the window.
+  Note: this chip's `sf erase` works in 64 KB blocks (0x0-0x10000 = bootinit).
+- A second try with `loady 0x81800000` printed `erase start_from[0x1800000]` (past the 8 MB chip):
+  this loady NEVER loads RAM, at any address. fatload / loadimg / mw are fine.
+- Serial uploads therefore use `serload.bin` (0x81f00000, built by buildall.sh): SSerHial writes it
+  with `mw.l` to the uncached alias 0xa1f00000 (249 words, checked with crc32, skipped when already
+  there), runs `go 0x81f00000 <dest> <size>`, sends the raw bytes (read with U-Boot getc into the
+  uncached alias, D-cache written back first, I-cache invalidated after) and compares the CRC32.
+  Works for any RAM destination incl. 0x80008000.

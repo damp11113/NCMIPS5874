@@ -11,9 +11,9 @@
 #define TX_BASE     0xbf480000u
 #define TX_BYTES    0x200
 
-typedef int (*txprint_t) (const char *fmt, ...);
+typedef int(*txprint_t) (const char *fmt, ...);
 
-static void snaptx_dump (txprint_t pf) {
+static void snaptx_dump(txprint_t pf) {
     volatile unsigned char *p = (volatile unsigned char *) TX_BASE;
     unsigned int i, j;
 
@@ -22,7 +22,7 @@ static void snaptx_dump (txprint_t pf) {
         for (j = 0; j < 16; j++) {
             b[j] = p[i + j];
         }
-        pf ("T %08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+        pf("T %08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
             TX_BASE + i, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
             b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
     }

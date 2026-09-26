@@ -19,23 +19,23 @@ static const u32 regs[NREG] = {
 
 static u32 vmin[NREG], vmax[NREG], wraps[NREG], changes[NREG], last[NREG];
 
-static u32 count (void) {
+static u32 count(void) {
     u32 v;
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     u32 i, t0, samples = 0;
     const u32 one_second = 324000000u;      /* CP0 Count ticks (cpuinfo) */
 
     for (i = 0; i < NREG; i++) {
-        last[i] = vmin[i] = vmax[i] = REG32 (regs[i]);
+        last[i] = vmin[i] = vmax[i] = REG32(regs[i]);
     }
-    t0 = count ();
-    while (count () - t0 < one_second) {
+    t0 = count();
+    while (count() - t0 < one_second) {
         for (i = 0; i < NREG; i++) {
-            u32 v = REG32 (regs[i]);
+            u32 v = REG32(regs[i]);
             if (v != last[i]) {
                 changes[i]++;
                 if (v < last[i]) {
@@ -49,10 +49,10 @@ int main (int argc, char *argv[]) {
         samples++;
     }
 
-    printf ("%d sample rounds in 1 s\n", samples);
-    printf ("register    changes/s  wraps/s   min        max\n");
+    printf("%d sample rounds in 1 s\n", samples);
+    printf("register    changes/s  wraps/s   min        max\n");
     for (i = 0; i < NREG; i++) {
-        printf ("%08x  %9d  %7d   %08x   %08x\n",
+        printf("%08x  %9d  %7d   %08x   %08x\n",
                 regs[i], changes[i], wraps[i], vmin[i], vmax[i]);
     }
     return 0;

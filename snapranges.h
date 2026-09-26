@@ -27,6 +27,6 @@ static const struct snap_range snap_ranges[] = {
     { 0xbf410000, 0x68 },
 };
 
-#define SNAP_NRANGES (sizeof (snap_ranges) / sizeof (snap_ranges[0]))
+#define SNAP_NRANGES (sizeof(snap_ranges) / sizeof(snap_ranges[0]))
 
 #endif

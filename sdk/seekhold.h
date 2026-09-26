@@ -22,7 +22,7 @@ struct seekhold {
     u32 step_ms, target_ms, last_ms;
 };
 
-static inline void seekhold_key (struct seekhold *s, int dir, int repeat, u32 pos_ms, u32 len_ms,
+static inline void seekhold_key(struct seekhold *s, int dir, int repeat, u32 pos_ms, u32 len_ms,
                                  u32 now_ms) {
     if (!s->active || dir != s->dir) {          /* new seek: start from the song position */
         s->active = 1;
@@ -47,7 +47,7 @@ static inline void seekhold_key (struct seekhold *s, int dir, int repeat, u32 po
 }
 
 /* 1 once the button was released: seek to s->target_ms now */
-static inline int seekhold_done (struct seekhold *s, u32 now_ms) {
+static inline int seekhold_done(struct seekhold *s, u32 now_ms) {
     if (s->active && now_ms - s->last_ms > SEEKHOLD_IDLE_MS) {
         s->active = 0;
         return 1;

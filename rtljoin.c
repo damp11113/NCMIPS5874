@@ -16,19 +16,19 @@
  */
 #include "wlan.h"
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     if (argc < 4) {
-        printf ("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr>\n");
+        printf("usage: go ${a} <fw-addr> <fw-size> <WIFI.TXT addr>\n");
         return 1;
     }
-    if (wlan_join ((const unsigned char *) parse_hex (argv[1]), parse_hex (argv[2]),
-                   (const char *) parse_hex (argv[3])) < 0) {
+    if (wlan_join((const unsigned char *) parse_hex(argv[1]), parse_hex(argv[2]),
+                   (const char *) parse_hex(argv[3])) < 0) {
         return 1;
     }
-    printf ("Listening 20 s for a deauthentication...\n");
-    wlan_listen (20000, 1);
+    printf("Listening 20 s for a deauthentication...\n");
+    wlan_listen(20000, 1);
     if (state == S_DONE) {
-        printf ("still associated after 20 s. Check your router's list of connected devices.\n");
+        printf("still associated after 20 s. Check your router's list of connected devices.\n");
     }
     return state == S_DONE ? 0 : 1;
 }

@@ -31,9 +31,9 @@
 #endif
 
 /* Fills fb, returns 0 on success, -1 if the display is not running */
-static inline int osd_setup (struct fb *fb) {
+static inline int osd_setup(struct fb *fb) {
     volatile u32 *hdr = (volatile u32 *) (0xa0000000u | OSD_HDR_PHYS);
-    u32 out = REG32 (0xbf4400b8);
+    u32 out = REG32(0xbf4400b8);
     u32 dst_w = out & 0xffff, dst_h = out >> 16;
     int i;
 
@@ -56,28 +56,28 @@ static inline int osd_setup (struct fb *fb) {
     fb->w = OSD_SRC_W;
     fb->h = OSD_SRC_H;
     fb->pitch = OSD_SRC_W;
-    fb_clear (fb, TRANSPARENT);
+    fb_clear(fb, TRANSPARENT);
 
     /* Scaler, U-Boot's own mode: 1280x720 -> output, 16.16 ratios */
-    REG32 (0xbf440100) = 0x000e0001;
-    REG32 (0xbf440108) = 0x07000000;
-    REG32 (0xbf44010c) = 0x0fd20000;
-    REG32 (0xbf440120) = 0x00000021;
-    REG32 (0xbf440110) = (OSD_SRC_W << 16) | dst_w;
-    REG32 (0xbf440114) = (OSD_SRC_W << 16) / dst_w;
-    REG32 (0xbf440128) = (OSD_SRC_H << 16) | dst_h;
-    REG32 (0xbf44012c) = (OSD_SRC_H << 16) / dst_h;
+    REG32(0xbf440100) = 0x000e0001;
+    REG32(0xbf440108) = 0x07000000;
+    REG32(0xbf44010c) = 0x0fd20000;
+    REG32(0xbf440120) = 0x00000021;
+    REG32(0xbf440110) = (OSD_SRC_W << 16) | dst_w;
+    REG32(0xbf440114) = (OSD_SRC_W << 16) / dst_w;
+    REG32(0xbf440128) = (OSD_SRC_H << 16) | dst_h;
+    REG32(0xbf44012c) = (OSD_SRC_H << 16) / dst_h;
 
     /* Layer control / enables (values from the stock firmware) */
-    REG32 (0xbf44006c) = 0x00d70111;
-    REG32 (0xbf440070) = 0x010000ff;
-    REG32 (0xbf440090) = 0x010000ff;
-    REG32 (0xbf4400a8) = 0x30000000;
-    REG32 (0xbf440160) = 0x1e028000;
-    REG32 (0xbf441034) = 0x9012d0d0;
-    REG32 (0xbf441028) = OSD_HDR_PHYS >> 3;
-    REG32 (0xbf440060) = 0x00000001;
-    REG32 (0xbf440000) = 0x10001100;
+    REG32(0xbf44006c) = 0x00d70111;
+    REG32(0xbf440070) = 0x010000ff;
+    REG32(0xbf440090) = 0x010000ff;
+    REG32(0xbf4400a8) = 0x30000000;
+    REG32(0xbf440160) = 0x1e028000;
+    REG32(0xbf441034) = 0x9012d0d0;
+    REG32(0xbf441028) = OSD_HDR_PHYS >> 3;
+    REG32(0xbf440060) = 0x00000001;
+    REG32(0xbf440000) = 0x10001100;
     return 0;
 }
 

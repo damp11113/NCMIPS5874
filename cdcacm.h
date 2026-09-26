@@ -16,25 +16,25 @@
 
 static void *cdc_dev;
 static u32 cdc_ep_in, cdc_ep_out;
-static unsigned char cdc_buf[512] __attribute__ ((aligned (32)));
+static unsigned char cdc_buf[512] __attribute__((aligned(32)));
 
 /* 0 = ok, -1 = no such device, -2 = descriptor read failed,
  * -3 = no CDC data interface with bulk IN + OUT */
-static inline int cdc_open (u32 vid, u32 pid) {
+static inline int cdc_open(u32 vid, u32 pid) {
     int len, i, cls = -1;
 
-    cdc_dev = ub_find_device (vid, pid);
+    cdc_dev = ub_find_device(vid, pid);
     if (!cdc_dev) {
         return -1;
     }
-    if (ub_control (cdc_dev, 0x06, 0x80, 0x0200, 0, cdc_buf, 9, 1000) < 9) {
+    if (ub_control(cdc_dev, 0x06, 0x80, 0x0200, 0, cdc_buf, 9, 1000) < 9) {
         return -2;
     }
     len = cdc_buf[2] | (cdc_buf[3] << 8);
-    if (len > (int) sizeof (cdc_buf)) {
-        len = sizeof (cdc_buf);
+    if (len > (int) sizeof(cdc_buf)) {
+        len = sizeof(cdc_buf);
     }
-    if (ub_control (cdc_dev, 0x06, 0x80, 0x0200, 0, cdc_buf, len, 1000) < len) {
+    if (ub_control(cdc_dev, 0x06, 0x80, 0x0200, 0, cdc_buf, len, 1000) < len) {
         return -2;
     }
 
@@ -56,17 +56,17 @@ static inline int cdc_open (u32 vid, u32 pid) {
 }
 
 /* Send n bytes; returns bytes sent or -1 */
-static inline int cdc_write (const void *data, int n) {
+static inline int cdc_write(const void *data, int n) {
     int done = 0, actual;
 
     while (done < n) {
-        int k = n - done > (int) sizeof (cdc_buf) ? (int) sizeof (cdc_buf) : n - done;
+        int k = n - done > (int) sizeof(cdc_buf) ? (int) sizeof(cdc_buf) : n - done;
         int i;
 
         for (i = 0; i < k; i++) {
             cdc_buf[i] = ((const unsigned char *) data)[done + i];
         }
-        if (ub_bulk (cdc_dev, cdc_ep_out, cdc_buf, k, &actual, 1000) < 0) {
+        if (ub_bulk(cdc_dev, cdc_ep_out, cdc_buf, k, &actual, 1000) < 0) {
             return -1;
         }
         done += k;
@@ -77,13 +77,13 @@ static inline int cdc_write (const void *data, int n) {
 /* Receive up to max (<= 512) bytes, ends early on a short packet. Blocks
  * until data arrives or EHCI times out (~5 s), so only call it when the
  * other side is about to send. */
-static inline int cdc_read (void *data, int max) {
+static inline int cdc_read(void *data, int max) {
     int actual = 0, i;
 
-    if (max > (int) sizeof (cdc_buf)) {
-        max = sizeof (cdc_buf);
+    if (max > (int) sizeof(cdc_buf)) {
+        max = sizeof(cdc_buf);
     }
-    if (ub_bulk (cdc_dev, cdc_ep_in, cdc_buf, max, &actual, 1000) < 0) {
+    if (ub_bulk(cdc_dev, cdc_ep_in, cdc_buf, max, &actual, 1000) < 0) {
         return -1;
     }
     for (i = 0; i < actual; i++) {

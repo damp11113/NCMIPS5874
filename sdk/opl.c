@@ -58,7 +58,7 @@ static const signed char slot_of_off[0x16] = {
     0, 1, 2, 3, 4, 5, -1, -1, 6, 7, 8, 9, 10, 11, -1, -1, 12, 13, 14, 15, 16, 17
 };
 
-static struct op *op_of_off (int bank, int off) {
+static struct op *op_of_off(int bank, int off) {
     int s, k;
 
     if (off < 0 || off >= 0x16 || slot_of_off[off] < 0) {
@@ -69,7 +69,7 @@ static struct op *op_of_off (int bank, int off) {
     return &ch[bank * 9 + (s / 6) * 3 + k % 3].op[k / 3];
 }
 
-void opl_init (int rate) {
+void opl_init(int rate) {
     /* Datasheet times in ms (attack 0 -> max, decay 96 dB), rates 1..15 */
     static const double attack_ms[16] = {
         0, 2826.24, 1413.12, 706.56, 353.28, 176.64, 88.32, 44.16,
@@ -84,7 +84,7 @@ void opl_init (int rate) {
 
     out_rate = rate;
     for (i = 0; i < 1024; i++) {
-        int s = (int) (sin ((i + 0.5) * 2 * M_PI / 1024) * 4095.0);
+        int s = (int) (sin((i + 0.5) * 2 * M_PI / 1024) * 4095.0);
         int a = s < 0 ? -s : s;
 
         wave_tab[0][i] = s;
@@ -107,13 +107,13 @@ void opl_init (int rate) {
     /* step = (fnum << block) * mult_x2 / 2 * OPL_CLOCK / 2^20 / rate * 2^32
      *      = (fnum << block) * mult_x2 * step_k >> 10 */
     step_k = (uint32_t) ((double) OPL_CLOCK * 2048.0 * 1024.0 / rate);
-    opl_reset ();
+    opl_reset();
 }
 
-void opl_reset (void) {
+void opl_reset(void) {
     int c, o;
 
-    memset (ch, 0, sizeof (ch));
+    memset(ch, 0, sizeof(ch));
     for (c = 0; c < OPL_CHANNELS; c++) {
         for (o = 0; o < 2; o++) {
             ch[c].op[o].env = ENV_MAX;
@@ -123,7 +123,7 @@ void opl_reset (void) {
     wave_select = 0;
 }
 
-static void set_step (struct chan *c) {
+static void set_step(struct chan *c) {
     uint32_t f = (uint32_t) c->fnum << c->block;
     int o;
 
@@ -132,7 +132,7 @@ static void set_step (struct chan *c) {
     }
 }
 
-static void key_on (struct op *op) {
+static void key_on(struct op *op) {
     op->phase = 0;
     if (op->ar == 15) {
         op->env = 0;
@@ -142,13 +142,13 @@ static void key_on (struct op *op) {
     }
 }
 
-static void key_off (struct op *op) {
+static void key_off(struct op *op) {
     if (op->state != EG_OFF) {
         op->state = EG_RELEASE;
     }
 }
 
-void opl_write (int reg, int val) {
+void opl_write(int reg, int val) {
     struct op *op;
     struct chan *c;
     int key, bank = (reg >> 8) & 1;
@@ -161,30 +161,30 @@ void opl_write (int reg, int val) {
     }
     switch (reg & 0xe0) {
     case 0x20:
-        if ((op = op_of_off (bank, reg - 0x20))) {
+        if ((op = op_of_off(bank, reg - 0x20))) {
             op->egt = (val >> 5) & 1;
             op->mult = val & 15;
         }
         break;
     case 0x40:
-        if ((op = op_of_off (bank, reg - 0x40))) {
+        if ((op = op_of_off(bank, reg - 0x40))) {
             op->tl = (val & 0x3f) * 4;
         }
         break;
     case 0x60:
-        if ((op = op_of_off (bank, reg - 0x60))) {
+        if ((op = op_of_off(bank, reg - 0x60))) {
             op->ar = val >> 4;
             op->dr = val & 15;
         }
         break;
     case 0x80:
-        if ((op = op_of_off (bank, reg - 0x80))) {
+        if ((op = op_of_off(bank, reg - 0x80))) {
             op->sl = ((val >> 4) == 15 ? 511 : (val >> 4) * 16) << 16;
             op->rr = val & 15;
         }
         break;
     case 0xe0:
-        if ((op = op_of_off (bank, reg - 0xe0))) {
+        if ((op = op_of_off(bank, reg - 0xe0))) {
             op->wave = val & 3;
         }
         break;
@@ -192,19 +192,19 @@ void opl_write (int reg, int val) {
         if (reg >= 0xa0 && reg <= 0xa8) {
             c = &ch[bank * 9 + reg - 0xa0];
             c->fnum = (c->fnum & 0x300) | val;
-            set_step (c);
+            set_step(c);
         } else if (reg >= 0xb0 && reg <= 0xb8) {
             c = &ch[bank * 9 + reg - 0xb0];
             c->fnum = (c->fnum & 0xff) | ((val & 3) << 8);
             c->block = (val >> 2) & 7;
-            set_step (c);
+            set_step(c);
             key = (val >> 5) & 1;
             if (key && !c->key) {
-                key_on (&c->op[0]);
-                key_on (&c->op[1]);
+                key_on(&c->op[0]);
+                key_on(&c->op[1]);
             } else if (!key && c->key) {
-                key_off (&c->op[0]);
-                key_off (&c->op[1]);
+                key_off(&c->op[0]);
+                key_off(&c->op[1]);
             }
             c->key = key;
         }
@@ -219,7 +219,7 @@ void opl_write (int reg, int val) {
     }
 }
 
-static inline void env_step (struct op *op) {
+static inline void env_step(struct op *op) {
     switch (op->state) {
     case EG_ATTACK:
         op->env -= attack_step[op->ar];
@@ -252,7 +252,7 @@ static inline void env_step (struct op *op) {
     }
 }
 
-static inline int op_calc (struct op *op, int mod) {
+static inline int op_calc(struct op *op, int mod) {
     int att = (op->env >> 16) + op->tl;
     int idx = ((op->phase >> 22) + mod) & 1023;
     int out;
@@ -262,11 +262,11 @@ static inline int op_calc (struct op *op, int mod) {
     }
     out = (wave_tab[wave_select ? op->wave : 0][idx] * gain_tab[att]) >> 12;
     op->phase += op->step;
-    env_step (op);
+    env_step(op);
     return out;
 }
 
-void opl_render (int *left, int *right, int n, const int *pan_l, const int *pan_r) {
+void opl_render(int *left, int *right, int n, const int *pan_l, const int *pan_r) {
     int c, i;
 
     for (c = 0; c < OPL_CHANNELS; c++) {
@@ -279,11 +279,11 @@ void opl_render (int *left, int *right, int n, const int *pan_l, const int *pan_
         }
         for (i = 0; i < n; i++) {
             int fb = cc->fb ? (m->out + m->prev) >> (9 - cc->fb) : 0;
-            int mo = op_calc (m, fb), out;
+            int mo = op_calc(m, fb), out;
 
             m->prev = m->out;
             m->out = mo;
-            out = cc->conn ? mo + op_calc (k, 0) : op_calc (k, mo);
+            out = cc->conn ? mo + op_calc(k, 0) : op_calc(k, mo);
             left[i] += (out * gl) >> 8;
             right[i] += (out * gr) >> 8;
         }

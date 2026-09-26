@@ -19,6 +19,6 @@ static const struct aud_range aud_ranges[] = {
     { 0xbf156000, 0x10 },   /* pinmux (aout touches 0xbf15601c) */
 };
 
-#define AUD_NRANGES (sizeof (aud_ranges) / sizeof (aud_ranges[0]))
+#define AUD_NRANGES (sizeof(aud_ranges) / sizeof(aud_ranges[0]))
 
 #endif

@@ -15,17 +15,18 @@
 #include <stdint.h>
 #include "synth.h"
 
-int smf_load (const unsigned char *data, long len, struct synth *s);
-void smf_set_synth (struct synth *s);                   /* switch engine, restarts notes */
-void smf_rewind (void);
-void smf_seek (uint32_t ms);                            /* jump; instruments / controllers
+int smf_load(const unsigned char *data, long len, struct synth *s);
+void smf_set_synth(struct synth *s);                   /* switch engine, restarts notes */
+void smf_rewind(void);
+void smf_seek(uint32_t ms);                            /* jump; instruments / controllers
                                                            are chased, notes skipped */
-void smf_render (int *left, int *right, int n);
-int smf_done (void);
-uint32_t smf_length_ms (void);                          /* whole song */
-uint32_t smf_position_ms (void);
-uint32_t smf_tempo_bpm (void);
-const char *smf_title (void);                           /* first track name / text */
+void smf_render(int *left, int *right, int n);
+int smf_done(void);
+uint32_t smf_length_ms(void);                          /* whole song */
+uint32_t smf_position_ms(void);
+uint32_t smf_position_beats_q16(void);                 /* quarter notes, 16.16 */
+uint32_t smf_tempo_bpm(void);
+const char *smf_title(void);                           /* first track name / text */
 
 /* Channel activity for display: last note-on velocity (decays), program */
 extern int smf_chan_level[16];

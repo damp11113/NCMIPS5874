@@ -38,20 +38,20 @@
 
 #include "sdk.h"
 
-void dg_sound_pump (void);          /* dg_sound.c */
-void dg_sound_stop (void);
-void dg_debug_frame (struct fb *fb);    /* dg_debug.c */
-void dg_debug_clear (struct fb *fb, int picture_x);
+void dg_sound_pump(void);          /* dg_sound.c */
+void dg_sound_stop(void);
+void dg_debug_frame(struct fb *fb);    /* dg_debug.c */
+void dg_debug_clear(struct fb *fb, int picture_x);
 extern int dg_debug_on;
 
 /* Counters for the debug overlay (raw CP0 Count, wrap: deltas only) */
 u32 dg_sleep_ticks, dg_draw_ticks, dg_frames, dg_rows_drawn, dg_usb_bytes;
 static long files_bytes;            /* bytes of big files loaded (overlay) */
 
-static inline u32 ticks (void) {
+static inline u32 ticks(void) {
     u32 v;
 
-    __asm__ volatile ("mfc0 %0, $9" : "=r" (v));
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
     return v;
 }
 
@@ -68,7 +68,7 @@ static u32 line_buf[OUT_W / 2];
 
 /* ---- files: progress bar for big loads (sdk_load_progress) ---- */
 
-static void load_progress (u32 done, u32 total) {
+static void load_progress(u32 done, u32 total) {
     static u32 last;
 
     if (done < last) {
@@ -78,36 +78,36 @@ static void load_progress (u32 done, u32 total) {
         return;
     }
     last = done;
-    printf ("\r  %u / %u KB ", done / 1024, total / 1024);
+    printf("\r  %u / %u KB ", done / 1024, total / 1024);
     if (done == total) {
-        printf ("\n");
+        printf("\n");
         files_bytes += total;
     }
     if (fb.pix && total > 1024 * 1024) {
-        fb_rect (&fb, out_x, out_y + OUT_H / 2 - 8,
-                 (int) ((unsigned long long) OUT_W * done / total), 16, RGB (200, 40, 40));
+        fb_rect(&fb, out_x, out_y + OUT_H / 2 - 8,
+                 (int) ((unsigned long long) OUT_W * done / total), 16, RGB(200, 40, 40));
     }
 }
 
-long dg_files_bytes (void) {
+long dg_files_bytes(void) {
     return files_bytes;
 }
 
-static void cleanup (void) {
-    dg_sound_stop ();
+static void cleanup(void) {
+    dg_sound_stop();
     if (fb.pix) {
-        fb_clear (&fb, TRANSPARENT);
+        fb_clear(&fb, TRANSPARENT);
     }
-    led_green (1);
+    led_green(1);
 }
 
 /* ---- screen ---- */
 
-static void build_lut (void) {
+static void build_lut(void) {
     int i;
 
     for (i = 0; i < 256; i++) {
-        u32 c = RGB (colors[i].r, colors[i].g, colors[i].b);
+        u32 c = RGB(colors[i].r, colors[i].g, colors[i].b);
 
         if (c == 0x801f) {
             c = 0x801e;             /* pure blue is the OSD colour key */
@@ -116,19 +116,19 @@ static void build_lut (void) {
     }
 }
 
-void DG_Init (void) {
-    if (osd_setup (&fb) < 0) {
-        printf ("dg: display not running: source avstart.scr first\n");
-        exit (1);
+void DG_Init(void) {
+    if (osd_setup(&fb) < 0) {
+        printf("dg: display not running: source avstart.scr first\n");
+        exit(1);
     }
     out_x = ((fb.w - OUT_W) / 2) & ~1;
     out_y = (fb.h - OUT_H) / 2;
-    fb_clear (&fb, BLACK);
+    fb_clear(&fb, BLACK);
 }
 
 /* 320 source pixels -> 960 output pixels = 480 pixel pairs:
  * source a b -> output a a a b b b -> pairs (a,a) (a,b) (b,b) */
-static void expand_line (const unsigned char *src) {
+static void expand_line(const unsigned char *src) {
     u32 *out = line_buf;
     int x;
 
@@ -142,14 +142,14 @@ static void expand_line (const unsigned char *src) {
     }
 }
 
-void DG_DrawFrame (void) {
+void DG_DrawFrame(void) {
     const unsigned char *frame = (const unsigned char *) DG_ScreenBuffer;
-    u32 t0 = ticks ();
+    u32 t0 = ticks();
     int y;
 
     if (palette_changed) {
         palette_changed = false;
-        build_lut ();
+        build_lut();
         full_redraw = 1;
     }
     if (sdk_screen_off) {                   /* screen saver: skip the copy, all of it on wake */
@@ -160,11 +160,11 @@ void DG_DrawFrame (void) {
         const unsigned char *src = frame + y * SCREENWIDTH;
         int oy, oy_end;
 
-        if (!full_redraw && !memcmp (src, prev_frame + y * SCREENWIDTH, SCREENWIDTH)) {
+        if (!full_redraw && !memcmp(src, prev_frame + y * SCREENWIDTH, SCREENWIDTH)) {
             continue;
         }
-        memcpy (prev_frame + y * SCREENWIDTH, src, SCREENWIDTH);
-        expand_line (src);
+        memcpy(prev_frame + y * SCREENWIDTH, src, SCREENWIDTH);
+        expand_line(src);
         dg_rows_drawn++;
 
         /* output rows y*3.6 .. (y+1)*3.6 */
@@ -179,35 +179,35 @@ void DG_DrawFrame (void) {
         }
     }
     full_redraw = 0;
-    dg_draw_ticks += ticks () - t0;
+    dg_draw_ticks += ticks() - t0;
     dg_frames++;
-    dg_usb_bytes = sdk_usb_bytes ();
-    dg_sound_pump ();               /* drawing is the slow part: top up audio */
-    dg_debug_frame (&fb);
-    sdk_overlay_tick ();
+    dg_usb_bytes = sdk_usb_bytes();
+    dg_sound_pump();               /* drawing is the slow part: top up audio */
+    dg_debug_frame(&fb);
+    sdk_overlay_tick();
 }
 
 /* ---- timer ---- */
 
-void DG_SleepMs (uint32_t ms) {
-    u32 t0 = ticks ();
+void DG_SleepMs(uint32_t ms) {
+    u32 t0 = ticks();
 
-    sdk_idle (ms * 1000);                   /* counted idle for the SDK overlay too */
-    dg_sleep_ticks += ticks () - t0;
+    sdk_idle(ms * 1000);                   /* counted idle for the SDK overlay too */
+    dg_sleep_ticks += ticks() - t0;
 }
 
-static void toggle_debug (void) {
+static void toggle_debug(void) {
     dg_debug_on = !dg_debug_on;
     if (!dg_debug_on) {
-        dg_debug_clear (&fb, out_x);
+        dg_debug_clear(&fb, out_x);
     }
 }
 
-uint32_t DG_GetTicksMs (void) {
-    return ub_get_timer (0);
+uint32_t DG_GetTicksMs(void) {
+    return ub_get_timer(0);
 }
 
-void DG_SetWindowTitle (const char *title) {
+void DG_SetWindowTitle(const char *title) {
     (void) title;
 }
 
@@ -217,7 +217,7 @@ void DG_SetWindowTitle (const char *title) {
 static struct { unsigned char pressed, key; } keyq[QSIZE];
 static int q_head, q_tail;
 
-static void post (int pressed, unsigned char key) {
+static void post(int pressed, unsigned char key) {
     int next = (q_tail + 1) % QSIZE;
 
     if (key && next != q_head) {
@@ -247,31 +247,31 @@ static int ir_ready, run_on;
 static int held = -1;               /* ir_map index of the held button */
 static u32 held_ms;
 
-static void release_held (void) {
+static void release_held(void) {
     if (held >= 0) {
-        post (0, ir_map[held].k1);
-        post (0, ir_map[held].k2);
+        post(0, ir_map[held].k1);
+        post(0, ir_map[held].k2);
         held = -1;
     }
 }
 
-static void poll_remote (void) {
+static void poll_remote(void) {
     struct ir_event ev;
-    u32 now = ub_get_timer (0);
+    u32 now = ub_get_timer(0);
 
     if (!ir_ready) {
-        ir_init ();
+        ir_init();
         ir_ready = 1;
     }
-    while (ir_poll (&ev)) {
+    while (ir_poll(&ev)) {
         unsigned int i;
 
         if (ev.user != IR_USER_STOCK) {
             continue;
         }
-        sdk_saver_kick ();                  /* SDK screen saver: a key, wake the screen */
+        sdk_saver_kick();                  /* SDK screen saver: a key, wake the screen */
         if (ev.key == IR_KEY_POWER) {
-            exit (0);
+            exit(0);
         }
         if (ev.key == IR_KEY_MUTE) {
             if (!ev.repeat) {
@@ -281,44 +281,44 @@ static void poll_remote (void) {
         }
         if (ev.key == IR_KEY_SETTINGS) {
             if (!ev.repeat) {
-                toggle_debug ();
+                toggle_debug();
             }
             continue;
         }
         if (ev.key == IR_KEY_BLUE) {
             if (!ev.repeat) {       /* run toggle = hold Shift */
                 run_on = !run_on;
-                post (run_on, KEY_RSHIFT);
+                post(run_on, KEY_RSHIFT);
             }
             continue;
         }
-        for (i = 0; i < sizeof (ir_map) / sizeof (ir_map[0]); i++) {
+        for (i = 0; i < sizeof(ir_map) / sizeof(ir_map[0]); i++) {
             if (ir_map[i].ir == ev.key) {
                 break;
             }
         }
-        if (i == sizeof (ir_map) / sizeof (ir_map[0])) {
+        if (i == sizeof(ir_map) / sizeof(ir_map[0])) {
             continue;
         }
         if (held == (int) i) {
             held_ms = now;          /* still held */
             continue;
         }
-        release_held ();
-        post (1, ir_map[i].k1);
-        post (1, ir_map[i].k2);
+        release_held();
+        post(1, ir_map[i].k1);
+        post(1, ir_map[i].k2);
         held = i;
         held_ms = now;
     }
     if (held >= 0 && now - held_ms > IR_RELEASE_MS) {
-        release_held ();
+        release_held();
     }
 }
 
 /* Serial keys: press now, release on the next poll (Doom sees one tic) */
 static unsigned char serial_down;
 
-static unsigned char serial_key (int c) {
+static unsigned char serial_key(int c) {
     switch (c) {
     case 'w': return KEY_UPARROW;
     case 's': return KEY_DOWNARROW;
@@ -339,47 +339,47 @@ static unsigned char serial_key (int c) {
     }
 }
 
-static void poll_serial (void) {
+static void poll_serial(void) {
     if (serial_down) {
-        post (0, serial_down);
+        post(0, serial_down);
         serial_down = 0;
     }
-    if (ub_tstc ()) {
-        int c = ub_getc ();
+    if (ub_tstc()) {
+        int c = ub_getc();
 
         if (c == 'Q') {
-            exit (0);
+            exit(0);
         }
         if (c == 'D') {
-            toggle_debug ();
+            toggle_debug();
             return;
         }
         if (c == 27) {              /* arrows: ESC [ A/B/C/D */
-            u32 t = ub_get_timer (0);
+            u32 t = ub_get_timer(0);
 
-            while (!ub_tstc () && ub_get_timer (t) < 5) {
+            while (!ub_tstc() && ub_get_timer(t) < 5) {
             }
-            if (ub_tstc () && ub_getc () == '[') {
-                while (!ub_tstc () && ub_get_timer (t) < 10) {
+            if (ub_tstc() && ub_getc() == '[') {
+                while (!ub_tstc() && ub_get_timer(t) < 10) {
                 }
-                c = ub_tstc () ? ub_getc () : 0;
+                c = ub_tstc() ? ub_getc() : 0;
                 serial_down = c == 'A' ? KEY_UPARROW : c == 'B' ? KEY_DOWNARROW :
                               c == 'C' ? KEY_RIGHTARROW : c == 'D' ? KEY_LEFTARROW : 0;
             } else {
                 serial_down = KEY_ESCAPE;
             }
         } else {
-            serial_down = serial_key (c);
+            serial_down = serial_key(c);
         }
-        post (1, serial_down);
+        post(1, serial_down);
     }
 }
 
-int DG_GetKey (int *pressed, unsigned char *key) {
-    dg_sound_pump ();
+int DG_GetKey(int *pressed, unsigned char *key) {
+    dg_sound_pump();
     if (q_head == q_tail) {
-        poll_remote ();
-        poll_serial ();
+        poll_remote();
+        poll_serial();
     }
     if (q_head == q_tail) {
         return 0;
@@ -392,7 +392,7 @@ int DG_GetKey (int *pressed, unsigned char *key) {
 
 /* ---- main ---- */
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     static char *args[32];
     int n = 0, i;
 
@@ -401,8 +401,8 @@ int main (int argc, char *argv[]) {
     /* Doom uses the first -iwad / -mb it finds: add ours only if the user
      * gave none, e.g. go ${a} -iwad doom2.wad -merge mod.wad -deh mod.deh */
     for (i = 1; i < argc; i++) {
-        have_iwad |= !strcmp (argv[i], "-iwad");
-        have_mb |= !strcmp (argv[i], "-mb");
+        have_iwad |= !strcmp(argv[i], "-iwad");
+        have_mb |= !strcmp(argv[i], "-mb");
     }
     args[n++] = "doom";
     if (!have_iwad) {
@@ -418,12 +418,12 @@ int main (int argc, char *argv[]) {
     }
     args[n] = 0;
 
-    printf ("Doom for the NC5874 box (doomgeneric). POWER on the remote or "
+    printf("Doom for the NC5874 box (doomgeneric). POWER on the remote or "
             "'Q' on serial quits.\n");
     sdk_load_progress = load_progress;
-    atexit (cleanup);               /* Doom leaves through exit () */
-    doomgeneric_Create (n, args);
+    atexit(cleanup);               /* Doom leaves through exit () */
+    doomgeneric_Create(n, args);
     for (;;) {
-        doomgeneric_Tick ();
+        doomgeneric_Tick();
     }
 }

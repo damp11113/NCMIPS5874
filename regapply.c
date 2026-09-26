@@ -99,25 +99,25 @@ static const char *names[] = {
  * set through the same bit-7 reset pulse U-Boot uses.
  * Seen on hardware: the monitor's refresh follows this PHY, not the display
  * clock regs (a pulse alone moved 1080i50 -> 1080i78, 43.8 kHz lines). */
-static void hdmi_phy_fw (void) {
-    u32 v = REG32 (0xbf157000);
+static void hdmi_phy_fw(void) {
+    u32 v = REG32(0xbf157000);
 
-    REG32 (0xbf157004) = 0x044af50c;
-    REG32 (0xbf157000) = 0x00177080;
-    udelay (1000);
-    REG32 (0xbf157000) = 0x00177000;
-    printf ("  bf157004 = 044af50c, bf157000: %08x -> 00177080 -> 00177000\n", v);
+    REG32(0xbf157004) = 0x044af50c;
+    REG32(0xbf157000) = 0x00177080;
+    udelay(1000);
+    REG32(0xbf157000) = 0x00177000;
+    printf("  bf157004 = 044af50c, bf157000: %08x -> 00177080 -> 00177000\n", v);
 }
 
 /* 6: pulse bit 7 of 0xbf157000, like U-Boot's "hdmi analog reset"
  * (0x41071080 then 0x41071000), so the HDMI PHY relocks to a new clock */
-static void hdmi_analog_reset (void) {
-    u32 v = REG32 (0xbf157000);
+static void hdmi_analog_reset(void) {
+    u32 v = REG32(0xbf157000);
 
-    REG32 (0xbf157000) = v | 0x80;
-    udelay (1000);
-    REG32 (0xbf157000) = v & ~0x80u;
-    printf ("  bf157000: %08x -> %08x -> %08x\n", v, v | 0x80, v & ~0x80u);
+    REG32(0xbf157000) = v | 0x80;
+    udelay(1000);
+    REG32(0xbf157000) = v & ~0x80u;
+    printf("  bf157000: %08x -> %08x -> %08x\n", v, v | 0x80, v & ~0x80u);
 }
 
 /* 10: HDMI TX byte registers cloned from the stock firmware's working
@@ -161,37 +161,37 @@ static const struct txval g10[] = {
     { 0xffff, 0 }
 };
 
-static void tx_clone (void) {
+static void tx_clone(void) {
     const struct txval *t;
 
     for (t = g10; t->reg != 0xffff; t++) {
         volatile unsigned char *p = (volatile unsigned char *) (0xbf480000u + t->reg);
         unsigned char old = *p;
         *p = t->val;
-        printf ("  tx %03x: %02x -> %02x\n", t->reg, old, t->val);
+        printf("  tx %03x: %02x -> %02x\n", t->reg, old, t->val);
     }
 }
 
 /* 11: TX "MISC_Reset" like U-Boot (0x801452f8): reg 0x08 = 2, then 0 */
-static void tx_misc_reset (void) {
+static void tx_misc_reset(void) {
     volatile unsigned char *r8 = (volatile unsigned char *) 0xbf480008u;
 
     *r8 = 2;
-    udelay (1000);
+    udelay(1000);
     *r8 = 0;
-    printf ("  tx 008: 02 -> 00 (misc reset)\n");
+    printf("  tx 008: 02 -> 00 (misc reset)\n");
 }
 
 /* 12: disable CPU interrupts (CP0 Status.IE = 0) so U-Boot's display/HDMI
  * interrupt handlers stop reprogramming the display back to 1080i (seen:
  * bf440140/144 reverted after our writes). U-Boot's console and timer are
  * polled, so the prompt keeps working. */
-static void irq_off (void) {
+static void irq_off(void) {
     u32 st;
 
-    __asm__ volatile ("mfc0 %0, $12" : "=r" (st));
-    __asm__ volatile ("mtc0 %0, $12\n\tehb" : : "r" (st & ~1u));
-    printf ("  CP0 Status %08x -> %08x (interrupts off)\n", st, st & ~1u);
+    __asm__ volatile("mfc0 %0, $12" : "=r" (st));
+    __asm__ volatile("mtc0 %0, $12\n\tehb" : : "r" (st & ~1u));
+    printf("  CP0 Status %08x -> %08x (interrupts off)\n", st, st & ~1u);
 }
 
 /* 13: U-Boot HDMI driver set_mode (dev, cfg) with 1080p60 (res 7, rate 1),
@@ -202,13 +202,13 @@ static void irq_off (void) {
 #define LINK_GOT_32736  0x80188af0u
 #define SET_MODE_WORD0  0x3c1c0005u
 
-static int call2 (u32 fn, u32 a0, u32 a1) {
-    register u32 r_a0 __asm__ ("$4") = a0;
-    register u32 r_a1 __asm__ ("$5") = a1;
-    register u32 r_t9 __asm__ ("$25") = fn;
-    register u32 r_v0 __asm__ ("$2");
+static int call2(u32 fn, u32 a0, u32 a1) {
+    register u32 r_a0 __asm__("$4") = a0;
+    register u32 r_a1 __asm__("$5") = a1;
+    register u32 r_t9 __asm__("$25") = fn;
+    register u32 r_v0 __asm__("$2");
 
-    __asm__ volatile ("jalr $25\n\tnop"
+    __asm__ volatile("jalr $25\n\tnop"
                       : "=r" (r_v0), "+r" (r_a0), "+r" (r_a1), "+r" (r_t9)
                       :
                       : "$3", "$6", "$7", "$8", "$9", "$10", "$11", "$12", "$13",
@@ -216,18 +216,18 @@ static int call2 (u32 fn, u32 a0, u32 a1) {
     return r_v0;
 }
 
-static void set_mode_p60 (void) {
+static void set_mode_p60(void) {
     char *gd;
     u32 off, set_mode, page, *glob, dev[4], cfg[16];
     int i;
 
-    __asm__ volatile ("move %0, $26" : "=r" (gd));
+    __asm__ volatile("move %0, $26" : "=r" (gd));
     off = *(u32 *) (gd + 0x14);
     set_mode = LINK_SET_MODE + off;
-    page = REG32 (LINK_GOT_32736 + off);
+    page = REG32(LINK_GOT_32736 + off);
     glob = (u32 *) (page + 21072);
-    if (REG32 (set_mode) != SET_MODE_WORD0 || glob[0] < 0x80000000u || glob[0] >= 0x88000000u) {
-        printf ("  sanity check failed, not calling set_mode\n");
+    if (REG32(set_mode) != SET_MODE_WORD0 || glob[0] < 0x80000000u || glob[0] >= 0x88000000u) {
+        printf("  sanity check failed, not calling set_mode\n");
         return;
     }
     for (i = 0; i < 16; i++) {
@@ -238,12 +238,12 @@ static void set_mode_p60 (void) {
     cfg[5] = 1;         /* 60 Hz */
     cfg[6] = 7;         /* 1080p */
     cfg[7] = glob[4];
-    printf ("  set_mode (1080p60) returned %d, TX reg 0x10 = %02x\n",
-            call2 (set_mode, (u32) dev, (u32) cfg), REG8 (0xbf480010));
+    printf("  set_mode (1080p60) returned %d, TX reg 0x10 = %02x\n",
+            call2(set_mode, (u32) dev, (u32) cfg), REG8(0xbf480010));
 }
 
 /* Group numbers are decimal */
-static int parse_dec (const char *s) {
+static int parse_dec(const char *s) {
     int v = 0;
 
     for (; *s >= '0' && *s <= '9'; s++) {
@@ -252,56 +252,56 @@ static int parse_dec (const char *s) {
     return v;
 }
 
-int main (int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     int i;
 
     if (argc < 2) {
-        printf ("usage: go ${a} <group> [<group> ...]   groups 1..14:\n");
+        printf("usage: go ${a} <group> [<group> ...]   groups 1..14:\n");
         for (i = 1; i <= 14; i++) {
-            printf ("  %d = %s\n", i, names[i]);
+            printf("  %d = %s\n", i, names[i]);
         }
         return 1;
     }
     for (i = 1; i < argc; i++) {
-        int g = parse_dec (argv[i]);
+        int g = parse_dec(argv[i]);
         const struct regval *r;
 
         if (g < 1 || g > 14) {
-            printf ("skip unknown group '%s'\n", argv[i]);
+            printf("skip unknown group '%s'\n", argv[i]);
             continue;
         }
-        printf ("group %d (%s):\n", g, names[g]);
+        printf("group %d (%s):\n", g, names[g]);
         if (g == 6) {
-            hdmi_analog_reset ();
+            hdmi_analog_reset();
             continue;
         }
         if (g == 7) {
-            hdmi_phy_fw ();
+            hdmi_phy_fw();
             continue;
         }
         if (g == 10) {
-            tx_clone ();
+            tx_clone();
             continue;
         }
         if (g == 11) {
-            tx_misc_reset ();
+            tx_misc_reset();
             continue;
         }
         if (g == 12) {
-            irq_off ();
+            irq_off();
             continue;
         }
         if (g == 13) {
-            set_mode_p60 ();
+            set_mode_p60();
             continue;
         }
         for (r = groups[g]; r->addr; r++) {
-            u32 old = REG32 (r->addr);
-            REG32 (r->addr) = r->val;
-            printf ("  %08x: %08x -> %08x\n", r->addr, old, r->val);
+            u32 old = REG32(r->addr);
+            REG32(r->addr) = r->val;
+            printf("  %08x: %08x -> %08x\n", r->addr, old, r->val);
         }
     }
-    printf ("done. Output mode now: display %dx%d (bf4400b8=%08x)\n",
-            REG32 (0xbf4400b8) & 0xffff, REG32 (0xbf4400b8) >> 16, REG32 (0xbf4400b8));
+    printf("done. Output mode now: display %dx%d (bf4400b8=%08x)\n",
+            REG32(0xbf4400b8) & 0xffff, REG32(0xbf4400b8) >> 16, REG32(0xbf4400b8));
     return 0;
 }
