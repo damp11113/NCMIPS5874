@@ -86,3 +86,42 @@ The stock firmware uses only the low 64 MB (AV core at 0x83e10000, video memory 
 2. Test program: pinmux 0xbf15b400 = 0x33, display on, write "123", read keys.
 3. `regdump` 0xbf158000 / 0xbf15b400 / 0xbf13c000 from U-Boot (before the stock firmware ran),
    compare with the values the stock firmware sets.
+
+## IR remote: verified on HW (irpanel, 2026-09-26)
+
+- Same IR block (0xbf151000) and `ir.h` init as the IPTV box; remote codes match `remoteir.txt`,
+  user code 0xfe01. `ir.h` works unchanged. (IPTV tools irkeys / irtest / irscan use `board.h`
+  GPIOs: do not run them here.)
+
+## RAM: upper 64 MB verified (ramtest, 2026-09-26)
+
+- Physical 0x04000000-0x07ffffff: not a mirror of the low half; data bus, address bus,
+  address-in-address (+ inverse) and random fill all 0 errors (uncached). Random data checked
+  afterwards with md.l (0xa4000000: 87985aa5 155b24a3 ...). -> 128 MB, ~64 MB free for apps
+  with the stock 64M AV layout.
+- ramtest (first build) printed "0 ms" pass time via get_timer; cause unknown. timertest: get_timer
+  is fine (1000 ms per 324,000,000 Count ticks for 10 s, across a Count wrap, and during a busy
+  loop), so SDK timing works on this box. ramtest now times with CP0 Count anyway.
+
+## NCAPPS on the satellite box (2026-09-26, VERIFIED on HW via source from the stick)
+
+- SDK detects the box from the U-Boot build (`ubaddr.h` `box`, `sdk_box_sat` in runtime.c).
+  Satellite: heap 0x04670000-0x08000000 + 0x01600000-0x01de0000 (~66 MB), OSD 0x04400000 and
+  audio 0x045d0000 unchanged (already in the free upper 64 MB), no bigmem. `sdk/box.h` redirects
+  `standby_pressed` (always 0) and `led_green` (front panel LED) / `led_red` (none); board.h
+  untouched (stock-firmware hooks include it). Watchdog reboot sequence same as the IPTV U-Boot.
+- `sat/scripts/ncboot.txt` -> `ncboot.scr` (911 B; `satboot.scr` on the stick): usb stop, stock AV
+  env (64M), AV core 0xb0000 -> 0x83e10000, usb start, launcher if on the stick, else stock
+  firmware (0x300000 -> 0x80008000). No fwpatch, no SETTINGS import, no EXIT marker.
+- Test with `source` from 0x81800000: 0x82100000 (IPTV habit) is inside this box's audio firmware
+  area (0x02050000-0x021d0000) and the AV init could overwrite the running script.
+- HW run: launcher on HDMI (MEM x/66M), audio works, DOOM runs (70 fps, CPU 53 % = game 30 /
+  draw 15 / music 6, idle 46 % in E1M1) -> performance same as the IPTV box; the manual's
+  "550 MHz" is most likely wrong (absolute clock only confirmed once timed against a stopwatch).
+- IPTV box with the same stick: usbspeed prints "U-Boot build: IPTV box" (read fn 0x813a1638 vs
+  0x813a1f20 on the satellite box), same speeds -> ubaddr.h detection verified on both boxes.
+- IPTV box boots the new launcher from its flashed ncboot: MEM x/89M (big memory on), as before.
+- **FLASHED 2026-09-26:** `satboot.scr` (= sat/scripts/ncboot.scr, 911 B) written to the boot.scr sector
+  0xa0000 (sf write from 0x81800000, cmp.b 4096 bytes same). Power-on with the stick -> NCAPPS,
+  without -> stock firmware (both verified). Undo: `usb start; fatload usb 0 0x82000000
+  flash_s2.bin; sf probe 0; sf erase 0xa0000 0x10000; sf write 0x820a0000 0xa0000 0x10000`.

@@ -51,18 +51,18 @@
 
 #define I2C_CH_FP       2
 
-static const u32 i2c_bases[5] = {
+static __attribute__ ((unused)) const u32 i2c_bases[5] = {
     0xbf560000u, 0xbf570000u, 0xbf158000u, 0xbf5c0000u, 0xbf580000u
 };
 
-static u32 i2c_base (int ch) {
+static __attribute__ ((unused)) u32 i2c_base (int ch) {
     return (ch >= 0 && ch < 5) ? i2c_bases[ch] : 0;
 }
 
 /* Last value read from I2C_CMD by a timed-out wait (for diagnosis) */
-static unsigned char i2c_last_cmd;
+static __attribute__ ((unused)) unsigned char i2c_last_cmd;
 
-static int i2c_wait (u32 base) {
+static __attribute__ ((unused)) int i2c_wait (u32 base) {
     int i;
 
     for (i = 0; i < 20000; i++) {
@@ -89,7 +89,7 @@ static __attribute__ ((unused)) int i2c_init (int ch, u32 prescale) {
 }
 
 /* Send one byte, with a START condition first if start != 0 */
-static int i2c_write_byte (u32 base, unsigned char b, int start) {
+static __attribute__ ((unused)) int i2c_write_byte (u32 base, unsigned char b, int start) {
     unsigned char st;
 
     REG8 (base + I2C_TXD) = b;
@@ -105,7 +105,7 @@ static int i2c_write_byte (u32 base, unsigned char b, int start) {
 }
 
 /* Receive one byte; last != 0 answers with NACK (end of the read) */
-static int i2c_read_byte (u32 base, unsigned char *b, int last) {
+static __attribute__ ((unused)) int i2c_read_byte (u32 base, unsigned char *b, int last) {
     REG8 (base + I2C_CMD) = last ? (I2C_CMD_READ | I2C_CMD_NACK) : I2C_CMD_READ;
     if (i2c_wait (base) < 0) {
         return I2C_E_TIMEOUT;
@@ -117,7 +117,7 @@ static int i2c_read_byte (u32 base, unsigned char *b, int last) {
     return 0;
 }
 
-static int i2c_stop (u32 base) {
+static __attribute__ ((unused)) int i2c_stop (u32 base) {
     REG8 (base + I2C_CMD) = I2C_CMD_STOP;
     if (i2c_wait (base) < 0) {
         return I2C_E_TIMEOUT;

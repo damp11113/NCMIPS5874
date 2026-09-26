@@ -17,6 +17,9 @@
 
 #include "uboot.h"
 
+#define UB_BOX_IPTV     0           /* NC5874 IPTV box (M88CS8051B) */
+#define UB_BOX_SAT      1           /* satellite box (M88CS8002B) */
+
 struct ub_build {
     const char *name;
     u32 version_link;           /* link address of the version string */
@@ -28,17 +31,18 @@ struct ub_build {
     u32 ehci_tmo;               /* ehci_submit_async: li s0,10000; li a0,5000 */
     u32 hdmi_set_mode;          /* HDMI dev ops[1]; 0 = not mapped for this build */
     u32 got_32736;              /* GOT entry -32736 (page used by set_mode) */
+    int box;                    /* UB_BOX_IPTV / UB_BOX_SAT */
 };
 
 static const struct ub_build ub_builds[] = {
     { "IPTV box", 0x8017fc24u, "U-Boot 2012.04 (Nov 21 2022 - 10:42:10)",
       0x80122a78u, 0x80122cb4u, 0x80122d50u, 0x8012484cu, 0x80159c7cu,
-      0x8014876cu, 0x80188af0u },
+      0x8014876cu, 0x80188af0u, UB_BOX_IPTV },
     /* set_mode found (0x80149054, GOT entry 0x80189620), but its data
      * offsets differ from the IPTV build: vicset / regapply stay IPTV-only */
     { "satellite box", 0x801805c8u, "U-Boot 2012.04 (May 09 2026 - 09:21:12)",
       0x80123360u, 0x8012359cu, 0x80123638u, 0x80125134u, 0x8015a564u,
-      0, 0 },
+      0, 0, UB_BOX_SAT },
 };
 
 static inline u32 ub_reloc_off (void) {

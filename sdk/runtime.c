@@ -51,10 +51,30 @@ char *ub_getenv (const char *name);                     /* ub_exports.S */
 #define AV_VIDEO_END 0x87d04000u
 u32 sdk_bigmem_bytes;
 
+/*
+ * Satellite box: 128 MB, but its stock AV layout (64M) uses phys
+ * 0x01df0400-0x04000000 (video write-back, audio + video firmware
+ * memory, AV core code at 0x03e10000). The heap is the free RAM below
+ * that and the upper 64 MB above the OSD plane / audio buffers
+ * (ramtest: upper 64 MB verified).
+ */
+#define SAT_LOW_START   0x81600000u
+#define SAT_LOW_END     0x81de0000u
+#define SAT_HIGH_START  0x84670000u     /* after AUD_BUF_PHYS + 0x90000 */
+#define SAT_HIGH_END    0x88000000u
+
+int sdk_box_sat;
+
 static void heap_regions (void) {
     u32 limit = (u32) _start >= SDK_LAUNCHER_ADDR ? SDK_LAUNCHER_ADDR + 0x200000 : SDK_APP_END;
     const char *big = ub_getenv ("nc_bigmem");
 
+    if (sdk_box_sat) {
+        sdk_heap_region (SAT_HIGH_START, SAT_HIGH_END);
+        sdk_heap_region (SAT_LOW_START, SAT_LOW_END);
+        sdk_heap_region ((u32) __bss_end + 0x10000, limit - 0x10000);
+        return;
+    }
     sdk_heap_region (SDK_HEAP_START, SDK_HEAP_END);
     /* the rest of our own load area (the image ends at __bss_end) */
     sdk_heap_region ((u32) __bss_end + 0x10000, limit - 0x10000);
@@ -95,6 +115,10 @@ int _start (int argc, char *argv[]) {
 
     for (p = __bss_start; p < __bss_end; p++) {
         *p = 0;
+    }
+    sdk_box_sat = ub_build () && ub_build ()->box == UB_BOX_SAT;
+    if (sdk_box_sat) {
+        fd650_init (0x200);
     }
     heap_regions ();
     for (ctor = __init_array_start; ctor < __init_array_end; ctor++) {

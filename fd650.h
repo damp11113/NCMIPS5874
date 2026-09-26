@@ -22,7 +22,7 @@
 #define FD650_DIG0      0x34
 
 /* Standard segments (bit 0 = a ... bit 6 = g, bit 7 = dot) for 0-9, A-F */
-static const unsigned char fd650_font[16] = {
+static __attribute__ ((unused)) const unsigned char fd650_font[16] = {
     0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07,
     0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71
 };
@@ -32,7 +32,7 @@ static const unsigned char fd650_font[16] = {
  * fd650_segbit[n] (a b c d e f g dot). From the stock firmware's font
  * table (0x8076e6ac: '0' = 0xf5, '1' = 0x05, ...), checked for 0-9.
  */
-static const unsigned char fd650_segbit[8] = { 6, 0, 2, 4, 5, 7, 1, 3 };
+static __attribute__ ((unused)) const unsigned char fd650_segbit[8] = { 6, 0, 2, 4, 5, 7, 1, 3 };
 
 /* Front buttons (key code with bit 6 = pressed; release = same without 0x40) */
 #define FD650_KEY_PRESSED   0x40
@@ -81,7 +81,7 @@ static __attribute__ ((unused)) int fd650_digit (int n, unsigned char seg) {
 #define FD650_LED_REG       0
 #define FD650_LED_BIT       0x02
 
-static const unsigned char fd650_pos_reg[3] = { 2, 3, 1 };
+static __attribute__ ((unused)) const unsigned char fd650_pos_reg[3] = { 2, 3, 1 };
 
 /* Panel segments for a character (0-9, A-F, a-f, '-', ' '; others blank) */
 static __attribute__ ((unused)) unsigned char fd650_char (char c) {

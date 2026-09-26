@@ -1,0 +1,21 @@
+echo '### ncboot (satellite box): NCAPPS launcher from USB if present, otherwise stock firmware ###'
+usb stop
+setenv avenv_AVCPU_CONFIG 64M
+setenv avenv_VIDEO_FW_CFG_SIZE 0x1c01000
+setenv avenv_VIDEO_FW_CFG_ADDR 0xa21e0000
+setenv avenv_AUDIO_FW_CFG_SIZE 0x180000
+setenv avenv_AUDIO_FW_CFG_ADDR 0x82050000
+setenv avenv_VID_SD_WR_BACK_SIZE 0x25f800
+setenv avenv_VID_SD_WR_BACK_FIELD_NO 0x6
+setenv avenv_VID_SD_WR_BACK_ADDR 0xa1df0400
+setenv avenv_SD_ENABLE 1
+setenv nc_bigmem
+loadimg 1 lzma 0xb0000 0x81500000 0x83e10000
+av_launch 0x83e10000
+cpu 1 release 0x83e10000
+setenv a 0x80008000
+usb start
+if fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '### starting NCAPPS launcher ###'; go 0x80800000; fi
+echo '### no NCAPPS (or launcher exited): booting stock firmware ###'
+loadimg 1 lzma 0x300000 0x81500000 0x80008000
+go 0x80008000

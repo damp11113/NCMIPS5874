@@ -5,7 +5,7 @@
 # Shared programs build in the project root; IPTV-box-only ones in iptv/.
 [ -f sine256.h ] || python3 mksine.py > sine256.h
 
-for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan rtlprobe rtljoin rtlnet rtlhttp usbspeed fptest; do
+for p in irtest irkeys audplay wavplay ch340test picoterm rtlhello rtlfw rtlscan rtlprobe rtljoin rtlnet rtlhttp usbspeed fptest irpanel ramtest timertest; do
     ./buildc.sh $p.c $p || echo "FAILED $p"
 done
 # IPTV box: stock-firmware hooks, firmware / U-Boot patches, AV core test
@@ -31,3 +31,5 @@ for app in sysinfo music midi; do sh apps/$app/build.sh || echo "FAILED $app"; d
 S=iptv/scripts
 python3 mkscript.py $S/ncboot.txt $S/ncboot.scr || echo "FAILED ncboot.scr"
 python3 mkscript.py $S/ncbig.txt $S/ncbig.scr || echo "FAILED ncbig.scr"
+# Satellite box boot script (its own AV memory map, no fwpatch)
+python3 mkscript.py sat/scripts/ncboot.txt sat/scripts/ncboot.scr || echo "FAILED sat ncboot.scr"
