@@ -12,11 +12,16 @@ both: the SDK recognises the box from its U-Boot build (`ubaddr.h`).
 | Extra | RTL8188FTV WiFi on USB port 1 | DVB-S tuner, Ethernet? (U-Boot env has `mt_eth`) |
 | Video decoders | H.264, HEVC, MPEG-2/4, AVS, VC-1, VP8, RV | MPEG-2, MPEG-4, H.264 (manual) |
 | Boot script in flash (0xa0000) | `iptv/scripts/ncboot.txt` | `sat/scripts/ncboot.txt` |
+| 1080p patch (U-Boot `li a2,9`, uncached) | `0xa13d382c` (link 0x8015782c) | `0xa13d4114` (link 0x80158114) |
+| Boot script flashed | 2026-09-28 (with video setting) | 2026-09-28 (with video + SETTINGS.TXT read) |
 
 ## NCAPPS support
 
 **Both boxes run NCAPPS** (launcher, SDK apps, DOOM) from the same stick:
-power-on with the stick boots the launcher, without it the stock firmware.
+power-on with the stick boots the launcher (1080p60 unless SETTINGS.TXT
+says otherwise), without it the stock firmware (U-Boot's 1080i, the stock
+firmware then sets its own mode). Same U-Boot display code on both boxes,
+only the patch address differs (README "Video mode").
 
 | Feature | IPTV box | Satellite box |
 |---|---|---|
@@ -24,6 +29,7 @@ power-on with the stick boots the launcher, without it the stock firmware.
 | Heap for apps | 34 MB, ~95 MB with "Big memory" | 66 MB (upper 64 MB free with the stock 64M AV layout) |
 | "Big memory" setting | yes (settings page) | hidden (not needed; value in SETTINGS.TXT kept for the IPTV box) |
 | HDMI output / OSD | yes | yes |
+| Video mode (SETTINGS → Video output, `video=` in SETTINGS.TXT) | 1080p60 / 1080p50 / 1080i50, **verified 1080p60** (also with big memory) | same, **verified 1080p50 and 1080p60** |
 | Audio | yes | yes |
 | USB stick (FAT32, fast reads ~26 MB/s) | yes | yes |
 | Remote (IR, user code 0xfe01) | yes | yes (same codes) |
@@ -68,11 +74,12 @@ on the satellite box.
 | `regdump`, `regwatch`, `snap*` | works | shared, untested (register ranges from the IPTV box) |
 | `irscan`, `irkeys`, `irtest` (use `board.h`: IPTV LED / STANDBY GPIOs) | works | **do not run**: use `irpanel` |
 | `led`, `board.h` | works | IPTV GPIOs only; the SDK redirects them on the satellite box |
-| `osdinit`, `tvapp`, `gfxdemo`, `vsyncprobe` | works | untested outside NCAPPS (need the AV init from the boot script) |
+| `osdinit`, `tvapp` (`osdsetup.h`: 1080i and 1080p) | works (1080p verified with `osdinit`) | untested outside NCAPPS (need the AV init from the boot script; default OSD 0x03000000 is inside this box's video memory) |
+| `gfxdemo`, `vsyncprobe` | works at 1080i (libgfx vsync assumes 1080i timing) | untested outside NCAPPS (need the AV init from the boot script) |
 | `audplay`, `wavplay`, `mp3play`, `badapple` | works | untested outside NCAPPS (need AV init) |
 | `rtl*` (WiFi), `ch340test`, `picoterm` | works | shared if such a USB device is plugged in |
 | `flashdiff` | works | shared |
-| `vicset`, `regapply` (HDMI set_mode call) | works | **no**: refuse to run (entry check); set_mode data offsets differ |
+| `vicset`, `regapply` (HDMI set_mode call) | works (old 1080p experiments, replaced by the boot-script patch) | **no**: refuse to run (entry check); set_mode data offsets differ |
 | `iptv/hooks/*` (hooks, `hookpatch`, `fwpatch`, `usbfast`, `vdectest`) | works | **no**: addresses of the IPTV stock firmware / U-Boot build |
 | `iptv/scripts/*` (`ncboot`, `avstart`, ...) | works | **no**: IPTV AV memory map; use `sat/scripts/` |
 | `xref.py`, `ubxref.py`, `accessors.py`, `m16dis.sh` | default to `iptv/firmware/` images | edit the path for satellite images |

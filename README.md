@@ -21,14 +21,14 @@ The detailed lab notebook, with every experiment and register value, is
 | C and C++ programs started from U-Boot (`go`) | `buildc.sh` (C), `buildgfx.sh` (C++ + libgfx) |
 | Serial console in/out, `printf`, timers | via U-Boot's exported functions |
 | STANDBY button, red/green power LED | GPIO, see `board.h` |
-| HDMI graphics without the stock firmware | OSD layer, 1280x720 ARGB1555 scaled to 1080i50 |
+| HDMI graphics without the stock firmware | OSD layer, 1280x720 ARGB1555 scaled to the output |
+| 1080p output | **1080p60** (default), 1080p50 or 1080i50, set in the launcher; see [Video mode](#video-mode-1080p) |
 | `libgfx` (`LinuxGFX` / `DrawReplay`) | new `GFX_NC5874` back-end, soft-float, dirty-rect + vsync |
-| Boot straight into my app | flash boot script: `tvapp.bin` from USB, else stock firmware |
+| Boot straight into my apps | flash boot script: NCAPPS launcher from USB, else stock firmware |
 | Boot ad removed | ad sector erased; stock firmware shows its fallback splash |
 
-Not done / parked: 1080p output (clock and HDMI TX solved, display mixer
-stays interlaced — see `continue.md`), IR remote, USB serial (CH340) driver,
-app stored in flash.
+Not done / parked: app stored in flash, hardware video decoding
+(experiments in `iptv/hooks/vdectest`, see `continue.md`).
 
 ## Hardware
 
@@ -46,7 +46,7 @@ app stored in flash.
 |---|---|
 | `0x000000` | first-stage boot |
 | `0x010000` | U-Boot |
-| `0x0A0000` | boot script (uImage script) — **replaced by `autoboot.scr`** |
+| `0x0A0000` | boot script (uImage script) — **replaced by `ncboot.scr`** |
 | `0x0B0000` | avcpu firmware (LZMA) |
 | `0x130000` | 1280x720 PNG |
 | `0x300000` | stock main firmware (LZMA, runs at `0x80008000`) |
@@ -57,13 +57,19 @@ A full dump is in `backup.bin` (keep a copy on the USB stick).
 
 ## Boot flow (current flash)
 
-`autoboot.scr` in the boot-script sector:
+`ncboot.scr` (from `iptv/scripts/ncboot.txt`; the satellite box has its own,
+`sat/scripts/ncboot.txt`) in the boot-script sector:
 
-1. starts the AV core and HDMI through U-Boot's own driver (`av_launch`),
-2. `usb start`; if the stick has **`tvapp.bin`**, runs it,
-3. otherwise (or when the app returns) boots the stock firmware.
+1. reads `NCAPPS/SETTINGS.TXT` from the stick (`env import`): big memory,
+   video mode, ...,
+2. patches U-Boot's display mode for 1080p (see [Video mode](#video-mode-1080p)),
+3. starts the AV core and HDMI through U-Boot's own driver (`av_launch`),
+4. `usb start`; if the stick has **`NCAPPS/LAUNCHER.BIN`**, runs the
+   NCAPPS launcher (app menu),
+5. otherwise (or when the launcher exits) boots the stock firmware.
 
-Press a key during the countdown to get the `U-boot#` prompt.
+Without the stick nothing is patched: 1080i50 and the stock firmware, as
+before. Press a key during the countdown to get the `U-boot#` prompt.
 
 **Restore the original boot script:**
 ```
@@ -75,6 +81,38 @@ sf write 0x820a0000 0xa0000 0x10000
 reset
 ```
 (Same pattern with `0x700000` restores the ad sector.)
+
+## Video mode (1080p)
+
+U-Boot's `av_launch` sets up the display in **1080i50**: its display init
+calls the mode setter with a constant, one `li a2,9` instruction (HD mode
+9). The boot script overwrites that instruction in RAM before `av_launch`,
+and U-Boot then programs the mixer, the 148.5 MHz pixel clock and the HDMI
+transmitter for the new mode by itself:
+
+| `SETTINGS.TXT` | Word written | HD mode | Output |
+|---|---|---|---|
+| `video=1080p60` (default with the stick) | `0x2406000a` | 10 | 1920x1080p 60 Hz |
+| `video=1080p50` | `0x2406000e` | 14 | 1920x1080p 50 Hz |
+| `video=1080i` | (not patched) | 9 | 1920x1080i 50 Hz |
+
+Address (uncached, U-Boot relocation offset `0x0127c000`): `0xa13d382c` on
+the IPTV box, `0xa13d4114` on the satellite box. The script only writes it
+when the word still reads `0x24060009`, so an unknown U-Boot build stays at
+1080i. Change the mode in the launcher (SETTINGS → Video output, RED
+restarts) or edit the stick's `SETTINGS.TXT`. By hand from the prompt:
+```
+md.l 0xa13d382c 1                  # IPTV box: must read 24060009
+mw.l 0xa13d382c 0x2406000a         # 1080p60; before av_launch / avstart.scr
+```
+
+The OSD needs two things at 1080p, both in `osdsetup.h`: the stock
+firmware's progressive scaler mode (`0xbf440100` = `0x000c0003`, 4.12
+ratios), and clearing bit 8 of `0xbf440124`, a vertical-scaler bypass that
+U-Boot sets at 1080p (the 720 OSD lines otherwise show 1:1, the picture
+fills only the top 2/3). The SDK clears that bit again from its key / idle
+loop. On every 1080p start U-Boot's first HDMI setup reports "Video not
+stable", the retry right after works.
 
 ## Building
 
@@ -105,11 +143,13 @@ the WiFi passwords too. Keep `backup.bin` safe outside the repo.
 ```
 usb start
 fatload usb 0 0x80100000 avstart.scr
-source 0x80100000                  # AV core + HDMI on (not needed with autoboot)
+source 0x80100000                  # AV core + HDMI on, 1080i (not needed with ncboot)
 fatload usb 0 ${a} myapp.bin
 go ${a}
 ```
-To make an app start at power-on, name it `tvapp.bin` on the stick.
+For 1080p, write the mode word first (see [Video mode](#video-mode-1080p)).
+To make an app start at power-on, add it to the NCAPPS menu (`ncapps/`)
+or set `autostart=` in `NCAPPS/LAUNCHER.INI`.
 
 ### Programming notes
 
@@ -144,7 +184,8 @@ Measured: full-screen convert ~40 ms; small updates (bouncing ball demo)
 `DRRender ()` (237-byte blob in the demo vs 3.7 MB raw frame).
 
 Known libgfx issue (all back-ends): `fillCircle` with alpha < 255 shows
-vertical stripes (overlapping spans blended twice).
+vertical stripes (overlapping spans blended twice). The vsync wait assumes
+1080i timing (2640x1125 per frame, two fields): not yet adapted to 1080p.
 
 ## Memory map (while an app runs)
 
@@ -167,10 +208,12 @@ vertical stripes (overlapping spans blended twice).
 | `0xbf155000` bits 6 / 7 | power LED red / green, 1 = on (GPIO bank 64-71) |
 | `0xbf15c004` | key ADC (63 = no key) |
 | `0xbf441028` | OSD layer 6 region header address >> 3 |
-| `0xbf440100..0xbf44012c` | OSD scaler (U-Boot 1080i mode: 16.16 ratios) |
-| `0xbf4400b8` | display output size per field (h<<16 \| w) |
+| `0xbf440100..0xbf44012c` | OSD scaler (`0x000e0001` = 1080i mode, 16.16 ratios; `0x000c0003` = progressive, 4.12) |
+| `0xbf440124` bit 8 | OSD vertical scaler bypass (U-Boot sets it at 1080p; must be 0) |
+| `0xbf440144` | mixer lines + 1 (`0x21d` 1080i field, `0x439` 1080p) |
+| `0xbf4400b8` | display output size per field (h<<16 \| w; 540 = 1080i) |
 | `0xbf47008c` | scan position in pixel clocks (0..2969999 per 1080i frame) |
-| `0xbf480000 + reg` | HDMI transmitter byte registers (bank 1 at `+0x100`) |
+| `0xbf480000 + reg` | HDMI transmitter byte registers (bank 1 at `+0x100`); reg `0x26/0x27` = measured Htotal (2200 = 60 Hz, 2640 = 50 Hz) |
 | `0xbf5d005c` low byte | video clock select (`0x14` 74.25 MHz, `0x25` 148.5 MHz) |
 
 More (GPIO banks, OSD header layout, HDMI mode table, U-Boot function
@@ -199,9 +242,9 @@ addresses) in `continue.md`.
   stock firmware at `0x300000`) so no USB stick is needed.
 - CH340 USB-serial driver in U-Boot's USB stack, then an MCU sending
   `DrawReplay` blobs to the box.
-- IR remote (receiver not on the GPIO banks; decoder probably unclocked
-  until the stock firmware sets it up).
-- Full 1920x1080 OSD on the 1080i output.
+- Full 1920x1080 OSD plane (the output is 1080p now; the OSD is still
+  1280x720 scaled up).
+- libgfx vsync for 1080p timing.
 
 ## License
 
