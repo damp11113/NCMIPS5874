@@ -517,12 +517,6 @@ static void envelope(struct voice *v) {
     v->gain_r = v->pan >= 0 ? lin : (int) ((long long) lin * (500 + v->pan) / 500);
 }
 
-/* (s * g) >> 15. Tried through a DSP accumulator (mult $acN + extr.w):
- * same speed on the box, so plain C (bench/). */
-static inline int gmul(int s, int g) {
-    return (s * g) >> 15;
-}
-
 /*
  * Same result as checking the sample end and the loop point after every
  * sample, but in runs: first how many output samples fit before the
@@ -566,61 +560,13 @@ static void mix_voice(struct voice *v, int *left, int *right, int n) {
         }
 run:
         m = k < (uint32_t) n ? (int) k : n;
-        if (gl == gr && gl) {
-            /* Centred voice: one gain multiply for both sides */
-            for (i = 0; i + 1 < m; i += 2) {
-                uint32_t f1 = frac + step, p1 = pos + (f1 >> 16);
-                int a0 = d[pos], b0 = d[pos + 1], s0, s1, a1, b1;
-
-                f1 &= 0xffff;
-                a1 = d[p1];
-                b1 = d[p1 + 1];
-                s0 = gmul(a0 + (((b0 - a0) * (int) frac) >> 16), gl);
-                s1 = gmul(a1 + (((b1 - a1) * (int) f1) >> 16), gl);
-                left[i] += s0;
-                right[i] += s0;
-                left[i + 1] += s1;
-                right[i + 1] += s1;
-                frac = f1 + step;
-                pos = p1 + (frac >> 16);
-                frac &= 0xffff;
-            }
-            if (i < m) {
-                int a = d[pos], b = d[pos + 1];
-                int s = gmul(a + (((b - a) * (int) frac) >> 16), gl);
-
-                left[i] += s;
-                right[i] += s;
-                frac += step;
-                pos += frac >> 16;
-                frac &= 0xffff;
-            }
-        } else if (gl | gr) {
-            /* Two samples per pass: their multiply chains overlap (a single
-             * sample waits on three dependent multiplies) */
-            for (i = 0; i + 1 < m; i += 2) {
-                uint32_t f1 = frac + step, p1 = pos + (f1 >> 16);
-                int a0 = d[pos], b0 = d[pos + 1], s0, s1, a1, b1;
-
-                f1 &= 0xffff;
-                a1 = d[p1];
-                b1 = d[p1 + 1];
-                s0 = a0 + (((b0 - a0) * (int) frac) >> 16);
-                s1 = a1 + (((b1 - a1) * (int) f1) >> 16);
-                left[i] += gmul(s0, gl);
-                right[i] += gmul(s0, gr);
-                left[i + 1] += gmul(s1, gl);
-                right[i + 1] += gmul(s1, gr);
-                frac = f1 + step;
-                pos = p1 + (frac >> 16);
-                frac &= 0xffff;
-            }
-            if (i < m) {
+        if (gl | gr) {
+            for (i = 0; i < m; i++) {
                 int a = d[pos], b = d[pos + 1];
                 int s = a + (((b - a) * (int) frac) >> 16);
 
-                left[i] += gmul(s, gl);
-                right[i] += gmul(s, gr);
+                left[i] += (s * gl) >> 15;
+                right[i] += (s * gr) >> 15;
                 frac += step;
                 pos += frac >> 16;
                 frac &= 0xffff;

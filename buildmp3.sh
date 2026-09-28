@@ -12,13 +12,13 @@ set -e
 SRC=$1
 OUT=$2
 CROSS=mipsel-linux-gnu-
-CFLAGS="-march=mips32r2 -EL -ffreestanding -fno-builtin -nostdlib -mno-abicalls -fno-pic -G 0 \
+CFLAGS="-march=mips32r2 -mdsp -EL -ffreestanding -fno-builtin -nostdlib -mno-abicalls -fno-pic -G 0 \
     -ffunction-sections -fdata-sections"
 
 mkdir -p build_mp3
 for f in helix/mp3/*.c; do
     o=build_mp3/$(basename $f .c).o
-    if [ ! -f $o ] || [ $f -nt $o ]; then
+    if [ ! -f $o ] || [ $f -nt $o ] || [ buildmp3.sh -nt $o ]; then
         ${CROSS}gcc $CFLAGS -O2 -w -Ihelix/mp3 -c $f -o $o
     fi
 done

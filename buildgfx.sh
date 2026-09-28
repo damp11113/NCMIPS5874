@@ -13,7 +13,7 @@ mkdir -p $OBJ
 
 # The 24KEc has no FPU: everything is soft-float, and float helpers come from
 # softfp/libsoftfp.a (compiler-rt) because the toolchain's libgcc uses FPU ops.
-COMMON="-march=mips32r2 -EL -msoft-float -Os -ffreestanding -mno-abicalls -fno-pic -G 0 \
+COMMON="-march=mips32r2 -mdsp -EL -msoft-float -Os -ffreestanding -mno-abicalls -fno-pic -G 0 \
     -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -Wall"
 CXXF="$COMMON -std=gnu++14 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
     -DGFX_NC5874 -I$LIBGFX -I."

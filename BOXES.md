@@ -79,6 +79,7 @@ on the satellite box.
 | `audplay`, `wavplay`, `mp3play`, `badapple` | works | untested outside NCAPPS (need AV init) |
 | `rtl*` (WiFi), `ch340test`, `picoterm` | works | shared if such a USB device is plugged in |
 | `flashdiff` | works | shared |
+| `bench/` (dspbench, `-mdsp` vs plain) | shared, untested | **tested** (numbers in `continue.md`) |
 | `vicset`, `regapply` (HDMI set_mode call) | works (old 1080p experiments, replaced by the boot-script patch) | **no**: refuse to run (entry check); set_mode data offsets differ |
 | `iptv/hooks/*` (hooks, `hookpatch`, `fwpatch`, `usbfast`, `vdectest`) | works | **no**: addresses of the IPTV stock firmware / U-Boot build |
 | `iptv/scripts/*` (`ncboot`, `avstart`, ...) | works | **no**: IPTV AV memory map; use `sat/scripts/` |

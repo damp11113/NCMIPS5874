@@ -231,6 +231,14 @@ Write, compile, and execute custom bare-metal MIPS assembly code on a Nationalch
   * **FLASHED 2026-09-28 on both boxes** (sector 0xa0000, 4096 bytes cmp.b + iminfo checksum OK; satellite from serial upload at 0x81800000, IPTV from the stick root ncboot.scr at 0x82100000). Power-on with the stick: '=== video 1080p60 ===' + launcher on both, user confirmed 1080p60 on screen; IPTV also with big memory on (8 MB video memory). Stick staged (H:, new launcher / apps / tvapp, satboot.scr = satellite script). IPTV reloc_off checked on the box: 0x0127c000, word 24060009 at 0xa13d382c as predicted.
   * Open: libgfx NC5874 vsync wait assumes 1080i (2640x1125, 2 fields).
 
+**MIPS DSP ASE (2026-09-28, measured on the satellite box):** 24KEc = DSP ASE rev 1; U-Boot runs with Status.MX (bit 24) = 1, so DSP instructions work in all our programs. Before: nothing used it (-march=mips32r2 only). Now `-mdsp` in sdk/build.sh (`DSP=` builds plain), doom/build.sh, buildmp3.sh, buildgfx.sh (not buildc.sh tools, not buildhook.sh: hooks run inside the stock firmware). Rebuild checks now also compare against the build script (Helix / deh objects were only rebuilt when their source changed). `bench/` = dspbench (`sh bench/build.sh` -> BENCHP.BIN plain / BENCHD.BIN -mdsp; `go 0x80008000 [<mp3 addr> <size>]`): real code, SF2 and OPL checked sample by sample against the committed code (bench/ref_*.c = git show HEAD:...). Results (satellite box, output identical everywhere):
+  * Helix MP3 (misery.mp3, 320 kbit/s): 4.60 % -> **3.61 % CPU (1.27x)** from -mdsp alone: gcc keeps polyphase's two 64-bit sums in $ac1-$ac3 (polyphase.c 1002 -> 734 insns, HI/LO moves 79 -> 18). IMDCT unchanged (mult/mfhi). CLZ loop is per granule: not worth it.
+  * SF2 mixer (64 voices, half centred): 47.9 -> 42.2 cycles per voice-sample (1.14x): unrolled x2 (two samples' multiply chains overlap) + centred voices (gain_l == gain_r) use one gain multiply. DSP accumulator multiply (mult $acN + extr.w) tried: 0 gain, removed. Loop is ~23 insns / sample at ~1.8 CPI (multiply latency); bit-exact DSP rev 1 has no way to cut the 3 multiplies per sample (mulq_rs.ph would, with rounding = not bit-exact).
+  * OPL (18 channels): 119.4 -> 103.3 cycles per channel-sample (1.17x): operators in locals during the sample loop (1.13x) + -mdsp (4 %).
+  * DOOM: expand_line 0.78 -> 0.71 M cycles/frame (-mdsp); the full frame draw is 5.8 M cycles and bound by uncached writes to the OSD (no change).
+  * libgfx ARGB8888 -> 1555 conversion: RAM bound, only -mdsp (no hand DSP).
+  * Rebuilt, NOT yet staged / run as apps (stick was in the box, serial link lost).
+
 **Possible next steps (user to pick):**
 1. MP3 decoder on the box: DONE (`mp3play.c`, see MP3 note above).
 2. Internet radio via the Pico: faster binary protocol + higher baud on the CH340 link, Pico buffers the stream, box decodes MP3 (needs 1).

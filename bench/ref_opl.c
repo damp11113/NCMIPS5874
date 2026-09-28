@@ -252,7 +252,7 @@ static inline void env_step(struct op *op) {
     }
 }
 
-static inline int op_calc(struct op *op, const short *wave, int mod) {
+static inline int op_calc(struct op *op, int mod) {
     int att = (op->env >> 16) + op->tl;
     int idx = ((op->phase >> 22) + mod) & 1023;
     int out;
@@ -260,45 +260,32 @@ static inline int op_calc(struct op *op, const short *wave, int mod) {
     if (att > 1023) {
         att = 1023;
     }
-    out = (wave[idx] * gain_tab[att]) >> 12;
+    out = (wave_tab[wave_select ? op->wave : 0][idx] * gain_tab[att]) >> 12;
     op->phase += op->step;
     env_step(op);
     return out;
 }
 
-/*
- * The two operators are copied to locals for the sample loop and written
- * back after it: through the struct in ch[] every field was reloaded and
- * stored each sample (the left / right stores might alias it). Same
- * arithmetic, same output, 1.13x faster (bench/, 18 channels).
- */
 void opl_render(int *left, int *right, int n, const int *pan_l, const int *pan_r) {
     int c, i;
 
     for (c = 0; c < OPL_CHANNELS; c++) {
         struct chan *cc = &ch[c];
-        struct op m, k;
-        const short *wm, *wk;
-        int gl = pan_l[c], gr = pan_r[c], fbs = cc->fb ? 9 - cc->fb : 0, conn = cc->conn;
+        struct op *m = &cc->op[0], *k = &cc->op[1];
+        int gl = pan_l[c], gr = pan_r[c];
 
-        if (cc->op[1].state == EG_OFF && (!conn || cc->op[0].state == EG_OFF)) {
+        if (k->state == EG_OFF && (!cc->conn || m->state == EG_OFF)) {
             continue;
         }
-        m = cc->op[0];
-        k = cc->op[1];
-        wm = wave_tab[wave_select ? m.wave : 0];
-        wk = wave_tab[wave_select ? k.wave : 0];
         for (i = 0; i < n; i++) {
-            int fb = fbs ? (m.out + m.prev) >> fbs : 0;
-            int mo = op_calc(&m, wm, fb), out;
+            int fb = cc->fb ? (m->out + m->prev) >> (9 - cc->fb) : 0;
+            int mo = op_calc(m, fb), out;
 
-            m.prev = m.out;
-            m.out = mo;
-            out = conn ? mo + op_calc(&k, wk, 0) : op_calc(&k, wk, mo);
+            m->prev = m->out;
+            m->out = mo;
+            out = cc->conn ? mo + op_calc(k, 0) : op_calc(k, mo);
             left[i] += (out * gl) >> 8;
             right[i] += (out * gr) >> 8;
         }
-        cc->op[0] = m;
-        cc->op[1] = k;
     }
 }

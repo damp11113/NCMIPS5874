@@ -8,6 +8,9 @@
 #   OBJ=build_sdk         object folder
 #   QUIET_SRC="a.c b.c"   third-party sources: built without warnings, only
 #                         when changed (e.g. the Helix MP3 decoder)
+#   DSP=-mdsp             MIPS DSP ASE rev 1 (default; the 24KEc has it and
+#                         U-Boot runs with Status.MX = 1); DSP= builds plain
+#                         mips32r2 code
 # Links: sdk/runtime.c (entry, files, input), sdk/libc, U-Boot export
 # stubs, soft-float (softfp/libsoftfp.a) and libgcc. No FPU instructions
 # are allowed (the 24KEc has none); the build checks that.
@@ -20,11 +23,12 @@ shift
 LOAD=${LOAD:-0x80008000}
 MAX_END=${MAX_END:-0x80800000}
 OBJ=${OBJ:-build_sdk}
+DSP=${DSP--mdsp}
 CROSS=mipsel-linux-gnu-
 GCCINC=$(${CROSS}gcc -print-file-name=include)
 ELF=${OUT%.*}.elf
 
-CFLAGS="-march=mips32r2 -EL -msoft-float -O2 -ffreestanding -mno-abicalls -fno-pic -G 0 \
+CFLAGS="-march=mips32r2 $DSP -EL -msoft-float -O2 -ffreestanding -mno-abicalls -fno-pic -G 0 \
     -ffunction-sections -fdata-sections -fno-strict-aliasing -fno-asynchronous-unwind-tables \
     -nostdinc -isystem $GCCINC -I$SDK/libc/include -I$SDK -I$ROOT -Wall $CFLAGS_EXTRA"
 
@@ -40,10 +44,12 @@ for f in "$@"; do
     ${CROSS}gcc $CFLAGS -c $f -o $o
     OBJS="$OBJS $o"
 done
-# Third-party sources: no warnings, rebuilt only when changed
+# Third-party sources: no warnings, rebuilt only when changed (or when
+# this script, i.e. the flags, changed; CFLAGS_EXTRA / DSP changes need a
+# clean $OBJ)
 for f in $QUIET_SRC; do
     o=$OBJ/q_$(basename ${f%.*}).o
-    if [ ! -f $o ] || [ $f -nt $o ]; then
+    if [ ! -f $o ] || [ $f -nt $o ] || [ $SDK/build.sh -nt $o ]; then
         ${CROSS}gcc $CFLAGS -w -c $f -o $o
     fi
     OBJS="$OBJS $o"

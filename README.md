@@ -157,6 +157,9 @@ or set `autostart=` in `NCAPPS/LAUNCHER.INI`.
 - `start.c` clears `.bss` and runs C++ global constructors; destructors never run.
 - `libc.c` has `memcpy`, `memset`, `strlen`, `strcmp`, `parse_hex`, ...
 - Use integers where you can: floats are software-emulated.
+- The CPU has the MIPS DSP ASE rev 1 (U-Boot leaves it enabled): SDK, DOOM,
+  MP3 and libgfx builds use `-mdsp` (MP3 decoding 1.27x faster).
+  `bench/` measures the hot loops with and without it.
 - `RGB (0, 0, 255)` exactly (`0x801f`) is the OSD colour key (transparent);
   `osd.h` / libgfx nudge it to `0x801e`.
 - U-Boot accepts at most 16 words per command.
@@ -232,6 +235,7 @@ addresses) in `continue.md`.
 | `iptv/hooks/` (`hook*.c`, `hookpatch.c`, `fwpatch.c`, `usbfast.c`), `buildhook.sh` | run code inside the stock firmware |
 | `regwatch.c`, `regdump.c`, `snap*.c`, `regapply.c`, `vicset.c`, `vsyncprobe.c`, `irscan.c` | hardware exploration tools |
 | `xref.py`, `ubxref.py`, `accessors.py`, `diffsnap.py` | firmware / U-Boot analysis scripts |
+| `bench/` | dspbench: SF2 / OPL / MP3 / DOOM hot loops, plain vs `-mdsp`, checked against the committed code |
 | `iptv/firmware/` (`backup.bin`, `app_ram.bin`, `uboot_part.bin`, `avcpu.bin`) | flash dump and extracted images |
 | `BOXES.md` | which file works on which box (IPTV / satellite) |
 | `continue.md` | full notes |

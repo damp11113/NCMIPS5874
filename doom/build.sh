@@ -15,7 +15,7 @@ DG=doomgeneric/doomgeneric
 OBJ=build
 GCCINC=$(${CROSS}gcc -print-file-name=include)
 
-CFLAGS="-march=mips32r2 -EL -msoft-float -O2 -ffreestanding -mno-abicalls -fno-pic -G 0 \
+CFLAGS="-march=mips32r2 -mdsp -EL -msoft-float -O2 -ffreestanding -mno-abicalls -fno-pic -G 0 \
     -ffunction-sections -fdata-sections -fno-strict-aliasing -fno-asynchronous-unwind-tables \
     -nostdinc -isystem $GCCINC -I../sdk/libc/include -I$DG -I../sdk -I.. \
     -DCMAP256 -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 -DFEATURE_SOUND"
@@ -70,7 +70,7 @@ done
 DEH_OBJ=""
 for f in $DEH_SRC; do
     b=$(basename $f .c)
-    if [ ! -f $OBJ/deh/$b.o ] || [ $f -nt $OBJ/deh/$b.o ]; then
+    if [ ! -f $OBJ/deh/$b.o ] || [ $f -nt $OBJ/deh/$b.o ] || [ build.sh -nt $OBJ/deh/$b.o ]; then
         cp $f $OBJ/deh/
         ${CROSS}gcc $CFLAGS -w -c $OBJ/deh/$b.c -o $OBJ/deh/$b.o
     fi
