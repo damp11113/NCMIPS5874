@@ -6,11 +6,15 @@
  * Uses RAM at phys 0x03000000..0x031c3000 for the region header + pixels.
  *
  * Output size is in 0xbf4400b8 (h<<16 | w, per field: 540 x 1920 for
- * U-Boot's 1080i). The OSD scaler has two modes, picked by 0xbf440100:
+ * U-Boot's default 1080i, 1080 x 1920 for 1080p). The OSD scaler has two
+ * modes, picked by 0xbf440100:
  *   0x000e0001 (U-Boot, interlaced): scale = src/dst in 16.16 fixed point,
- *     size regs = src<<16 | dst-per-field. Used here.
- *   0x000c0003 (stock firmware, 1080p): scale in 4.12 (0xaaa = 0.667).
+ *     size regs = src<<16 | dst-per-field. Used for 1080i.
+ *   0x000c0003 (stock firmware, progressive): scale in 4.12 (0xaaa =
+ *     0.667). Used for 1080p / 720p (boot script patches U-Boot's display
+ *     mode, see ncboot.txt).
  * Mixing them (firmware mode on U-Boot's 1080i) gave a ~4x tall picture.
+ * At 1080p also see osd_vscale_fix () (vertical scaler bypass bit).
  */
 #ifndef OSDSETUP_H
 #define OSDSETUP_H
@@ -29,6 +33,21 @@
 #ifndef REG32
 #define REG32(addr)     (*(volatile u32 *) (addr))
 #endif
+
+/*
+ * U-Boot's own layer scaler setup (link 0x801502b0) sets bit 8 of
+ * 0xbf440124 when its source and output heights are equal, which they are
+ * at 1080p; the OSD scaler then passes our 720 lines through unscaled
+ * (mixer line count 0xbf440144 reads 721 instead of 1081, picture in the
+ * top 2/3 of the screen). Never set at 1080i (540 per field). Cleared by
+ * osd_setup and again from the SDK's key / idle loop in case U-Boot's
+ * display code sets it later.
+ */
+static inline void osd_vscale_fix(void) {
+    if ((REG32(0xbf4400b8) >> 16) >= 720 && (REG32(0xbf440124) & 0x100u)) {
+        REG32(0xbf440124) &= ~0x100u;
+    }
+}
 
 /* Fills fb, returns 0 on success, -1 if the display is not running */
 static inline int osd_setup(struct fb *fb) {
@@ -58,15 +77,30 @@ static inline int osd_setup(struct fb *fb) {
     fb->pitch = OSD_SRC_W;
     fb_clear(fb, TRANSPARENT);
 
-    /* Scaler, U-Boot's own mode: 1280x720 -> output, 16.16 ratios */
-    REG32(0xbf440100) = 0x000e0001;
-    REG32(0xbf440108) = 0x07000000;
-    REG32(0xbf44010c) = 0x0fd20000;
-    REG32(0xbf440120) = 0x00000021;
-    REG32(0xbf440110) = (OSD_SRC_W << 16) | dst_w;
-    REG32(0xbf440114) = (OSD_SRC_W << 16) / dst_w;
-    REG32(0xbf440128) = (OSD_SRC_H << 16) | dst_h;
-    REG32(0xbf44012c) = (OSD_SRC_H << 16) / dst_h;
+    if (dst_h >= 720) {
+        /* Progressive output (1080p / 720p): stock firmware's mode, 4.12
+         * ratios (verified at 1080p60 together with osd_vscale_fix) */
+        REG32(0xbf440100) = 0x000c0003;
+        REG32(0xbf440108) = 0x0e000000;
+        REG32(0xbf44010c) = 0x1fa40000;
+        REG32(0xbf440120) = 0x00000011;
+        REG32(0xbf440110) = (OSD_SRC_W << 16) | dst_w;
+        REG32(0xbf440114) = (OSD_SRC_W << 12) / dst_w;
+        REG32(0xbf440128) = (OSD_SRC_H << 16) | dst_h;
+        REG32(0xbf44012c) = (OSD_SRC_H << 12) / dst_h;
+        osd_vscale_fix();
+    } else {
+        /* Interlaced output (1080i: dst_h = 540 per field): U-Boot's own
+         * mode, 16.16 ratios */
+        REG32(0xbf440100) = 0x000e0001;
+        REG32(0xbf440108) = 0x07000000;
+        REG32(0xbf44010c) = 0x0fd20000;
+        REG32(0xbf440120) = 0x00000021;
+        REG32(0xbf440110) = (OSD_SRC_W << 16) | dst_w;
+        REG32(0xbf440114) = (OSD_SRC_W << 16) / dst_w;
+        REG32(0xbf440128) = (OSD_SRC_H << 16) | dst_h;
+        REG32(0xbf44012c) = (OSD_SRC_H << 16) / dst_h;
+    }
 
     /* Layer control / enables (values from the stock firmware) */
     REG32(0xbf44006c) = 0x00d70111;

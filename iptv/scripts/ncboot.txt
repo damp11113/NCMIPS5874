@@ -1,14 +1,15 @@
 echo '### ncboot: NCAPPS launcher from USB if present, otherwise stock firmware ###'
 setenv bigmem 0
+setenv video 1080i
 setenv ncvsz 0x800000
 usb start
-if fatload usb 0 0x82400000 /NCAPPS/SETTINGS.TXT; then env import -t 0x82400000 ${filesize}; fi
+if fatload usb 0 0x82400000 /NCAPPS/SETTINGS.TXT; then setenv video 1080p60; env import -t 0x82400000 ${filesize}; fi
 setenv ncstock 0
 mw.l 0x82500000 0x4e435354
-if cmp.l 0xa3ff0000 0x82500000 1; then mw.l 0xa3ff0000 0; setenv bigmem 0; setenv ncstock 1; echo '### one-shot: stock firmware with normal AV memory ###'; fi
+if cmp.l 0xa3ff0000 0x82500000 1; then mw.l 0xa3ff0000 0; setenv bigmem 0; setenv ncstock 1; echo '=== one-shot: stock firmware with normal AV memory ==='; fi
 usb stop
 setenv avenv_AVCPU_CONFIG 128M_AD_HEVC
-if test "${bigmem}" = 1; then echo '### big memory: AV video memory' ${ncvsz} '###'; setenv nc_bigmem 1; setenv avenv_VIDEO_FW_CFG_SIZE ${ncvsz}; else setenv nc_bigmem; setenv avenv_VIDEO_FW_CFG_SIZE 0x31ac000; fi
+if test "${bigmem}" = 1; then echo '=== big memory: AV video memory' ${ncvsz} '==='; setenv nc_bigmem 1; setenv avenv_VIDEO_FW_CFG_SIZE ${ncvsz}; else setenv nc_bigmem; setenv avenv_VIDEO_FW_CFG_SIZE 0x31ac000; fi
 setenv avenv_VIDEO_FW_CFG_ADDR 0xa4b58000
 setenv avenv_AUDIO_FW_CFG_SIZE 0x180000
 setenv avenv_AUDIO_FW_CFG_ADDR 0x849c8000
@@ -16,12 +17,17 @@ setenv avenv_VID_SD_WR_BACK_SIZE 0x32a000
 setenv avenv_VID_SD_WR_BACK_FIELD_NO 0x4
 setenv avenv_VID_SD_WR_BACK_ADDR 0xa469dc00
 setenv avenv_SD_ENABLE 1
+setenv ncvmode 0x24060009
+if test "${video}" = 1080p60; then setenv ncvmode 0x2406000a; fi
+if test "${video}" = 1080p50; then setenv ncvmode 0x2406000e; fi
+mw.l 0x82500010 0x24060009
+if cmp.l 0xa13d382c 0x82500010 1; then mw.l 0xa13d382c ${ncvmode}; echo '=== video' ${video} '==='; else echo '=== video: unknown U-Boot build, left at 1080i ==='; fi
 loadimg 1 lzma 0xb0000 0x81500000 0x87e10000
 av_launch 0x87e10000
 cpu 1 release 0x87e10000
 setenv a 0x80008000
 usb start
-if test "${ncstock}" = 0 && fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '### starting NCAPPS launcher ###'; go 0x80800000; fi
+if test "${ncstock}" = 0 && fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '=== starting NCAPPS launcher ==='; go 0x80800000; fi
 echo '### no NCAPPS (or launcher exited): booting stock firmware ###'
 loadimg 1 lzma 0x300000 0x81500000 0x80008000
 if fatload usb 0 0x82000000 /NCAPPS/FWPATCH.BIN; then go 0x82000000; fi

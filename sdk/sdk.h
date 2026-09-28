@@ -170,6 +170,11 @@ void sdk_saver_kick(void);
  * when a key wakes the screen, so keep drawing real content changes. */
 extern int sdk_screen_off;
 void sdk_reboot(void) __attribute__((noreturn));     /* watchdog reset, boots from flash */
+
+/* HDMI output mode as it runs: "1080p60", "1080p50", "1080i50", ... The
+ * boot script picks it (SETTINGS.TXT video=, patched into U-Boot's
+ * display init before av_launch). */
+const char *sdk_video_mode(void);
 void sdk_cache_sync(u32 start, u32 len);
 void sdk_libc_reset(void);
 

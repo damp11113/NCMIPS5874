@@ -25,7 +25,9 @@
  * overlay in any SDK app. Second switch: big memory (AV core video memory
  * 8 MB, the rest becomes heap), applied by the boot script on the next
  * start. Third: screen saver minutes (1 / 5 / 10 / 30 / off, passed to SDK
- * apps as "@saver=N"). All are saved in NCAPPS/SETTINGS.TXT (512 bytes, created by
+ * apps as "@saver=N"). Fourth: HDMI output 1080p60 / 1080p50 / 1080i, also
+ * applied by the boot script on the next start (patches U-Boot's display
+ * init). All are saved in NCAPPS/SETTINGS.TXT (512 bytes, created by
  * stage.sh, overwritten in place: the only write to the stick).
  *
  * Keys: UP / DOWN select, OK start, INFO details on serial, EXIT = leave
@@ -176,10 +178,30 @@ static void ini_field(void *ctx, const char *k, const char *v) {
 
 static int set_bigmem;              /* saved setting; the running state is sdk_bigmem_bytes */
 
+/* video= values the boot script knows (ncboot.txt); the running mode is
+ * sdk_video_mode () */
+static const char *video_modes[] = { "1080p60", "1080p50", "1080i" };
+static int set_video;
+
+static int video_index(const char *v) {
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        if (!strncasecmp(v, video_modes[i], strlen(video_modes[i]))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void settings_field(void *ctx, const char *k, const char *v) {
     (void) ctx;
     if (!strcasecmp(k, "bigmem")) {
         set_bigmem = atoi(v) != 0;
+    } else if (!strcasecmp(k, "video")) {
+        if (video_index(v) >= 0) {
+            set_video = video_index(v);
+        }
     } else if (!strcasecmp(k, "overlay")) {
         sdk_overlay_on = atoi(v) != 0;
     } else if (!strcasecmp(k, "saver")) {
@@ -204,16 +226,19 @@ static int settings_save(void) {
                   "bigmem=%d\n"
                   "overlay=%d\n"
                   "# saver: minutes without a key until the screen goes black, 0 never\n"
-                  "saver=%d\n",
-                  set_bigmem, sdk_overlay_on ? 1 : 0, (int) sdk_saver_min);
+                  "saver=%d\n"
+                  "# video: HDMI output 1080p60, 1080p50 or 1080i\n"
+                  "video=%s\n",
+                  set_bigmem, sdk_overlay_on ? 1 : 0, (int) sdk_saver_min,
+                  video_modes[set_video]);
     memset(buf + n, '#', sizeof(buf) - 1 - n);
     buf[sizeof(buf) - 1] = '\n';
     if (sdk_overwrite_sector_file(SETTINGS_PATH, buf, SETTINGS_MAGIC) < 0) {
         printf("launcher: settings NOT saved\n");
         return -1;
     }
-    printf("launcher: settings saved (bigmem=%d overlay=%d saver=%d)\n", set_bigmem,
-            sdk_overlay_on, (int) sdk_saver_min);
+    printf("launcher: settings saved (bigmem=%d overlay=%d saver=%d video=%s)\n", set_bigmem,
+            sdk_overlay_on, (int) sdk_saver_min, video_modes[set_video]);
     return 0;
 }
 
@@ -809,21 +834,24 @@ static int launch(const struct entry *e) {
 extern size_t heap_total;
 
 static void about(void) {
-    static const char *help[3][2] = {
+    static const char *help[4][2] = {
         { "CPU / memory / USB / audio bar at the top of the screen.",
           "MUTE on the remote switches it in any app." },
         { "Gives the AV core 8 MB video memory instead of 50: much more",
           "heap for apps. Hardware video decoding may not work with it." },
         { "Black screen after this long without a key (apps keep running,",
           "music keeps playing). Protects the TV from image retention." },
+        { "HDMI output mode, used from the next start. 1080p is sharp and",
+          "steady; 1080i (U-Boot's default) flickers on thin lines." },
     };
     static const u32 saver_steps[] = { 1, 5, 10, 30, 0 };
     /* Items shown: the satellite box has no big memory mode (its AV core
      * already leaves the upper 64 MB free); bigmem stays in SETTINGS.TXT
      * untouched for the IPTV box sharing the stick. */
-    static const int items_iptv[] = { 0, 1, 2 }, items_sat[] = { 0, 2 };
+    static const int items_iptv[] = { 0, 1, 2, 3 }, items_sat[] = { 0, 2, 3 };
     const int *items = sdk_box_sat ? items_sat : items_iptv;
-    int nitems = sdk_box_sat ? 2 : 3;
+    int nitems = sdk_box_sat ? 3 : 4;
+    int video_now = video_index(sdk_video_mode());
     struct sdk_key k;
     int redraw = 1, item = 0, i;
     const char *status = "";
@@ -831,10 +859,11 @@ static void about(void) {
 
     sdk_panel_show("SEt");
     for (;;) {
+        int big_now = sdk_bigmem_bytes != 0;
+        int restart = (!sdk_box_sat && set_bigmem != big_now) || set_video != video_now;
+
         if (redraw) {
             char line[96];
-            int big_now = sdk_bigmem_bytes != 0;
-            int restart = !sdk_box_sat && set_bigmem != big_now;
 
             fb_clear(&fb, BG);
             fb_rect(&fb, 0, 0, fb.w, 100, PANEL);
@@ -854,7 +883,7 @@ static void about(void) {
             fb_text(&fb, LIST_X, 420, line, 2, GREY, TRANSPARENT);
 
             for (i = 0; i < nitems; i++) {
-                int y = 462 + i * 40;
+                int y = 454 + i * 32;
 
                 if (i == item) {
                     fb_rect(&fb, LIST_X - 10, y - 6, 1000, 36, HILITE);
@@ -869,6 +898,10 @@ static void about(void) {
                     } else {
                         snprintf(line, sizeof(line), "Screen saver:         OFF");
                     }
+                } else if (items[i] == 3) {
+                    snprintf(line, sizeof(line), "Video output:         %s  %s",
+                              video_modes[set_video],
+                              set_video == video_now ? "" : "(after restart)");
                 } else if (set_bigmem == big_now) {
                     snprintf(line, sizeof(line), "Big memory:           %s  (heap %d MB)",
                               set_bigmem ? "ON " : "OFF", (int) (heap_total >> 20));
@@ -905,6 +938,8 @@ static void about(void) {
                 sdk_overlay_on = !sdk_overlay_on;
             } else if (items[item] == 1) {
                 set_bigmem = !set_bigmem;
+            } else if (items[item] == 3) {
+                set_video = (set_video + 1) % 3;
             } else {
                 for (i = 0; i < 4 && saver_steps[i] != sdk_saver_min; i++) {
                 }
@@ -918,7 +953,7 @@ static void about(void) {
                 status_col = RED;
             }
             redraw = 1;
-        } else if (k.btn == BTN_RED && !sdk_box_sat && set_bigmem != (sdk_bigmem_bytes != 0)) {
+        } else if (k.btn == BTN_RED && restart) {
             message("Restarting...", WHITE);
             sdk_reboot();
         } else if (k.btn == BTN_BACK || k.btn == BTN_MENU || k.btn == BTN_HOME) {
@@ -1032,6 +1067,10 @@ int main(int argc, char *argv[]) {
 
     read_kv(INI_PATH, ini_field, 0);
     set_bigmem = sdk_bigmem_bytes != 0;
+    set_video = video_index(sdk_video_mode());     /* no video= line: keep what runs */
+    if (set_video < 0) {
+        set_video = 2;
+    }
     read_kv(SETTINGS_PATH, settings_field, 0);
     scan();
     splash_on = 0;

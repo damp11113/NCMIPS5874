@@ -178,8 +178,7 @@ static void page_display(void) {
     u32 out = REG32(0xbf4400b8), w = out & 0xffff, h = out >> 16;
 
     add(YELLOW, "DISPLAY + AUDIO");
-    add(WHITE, "Output     %dx%d per field -> %s", w, h,
-         h <= 576 ? "interlaced (1080i50)" : "progressive");
+    add(WHITE, "Output     %s, %dx%d per field", sdk_video_mode(), w, h);
     add(WHITE, "OSD        layer 6, %dx%d ARGB1555, pitch %d px", fb.w, fb.h, fb.pitch);
     add(WHITE, "OSD RAM    0x%08x (uncached view)", (u32) fb.pix);
     add(WHITE, "Colour key 0x801f (pure blue shows as transparent)");

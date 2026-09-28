@@ -597,6 +597,32 @@ void sdk_reboot(void) {
     }
 }
 
+/* ---- video mode ---- */
+
+/*
+ * Lines from the mixer's output size (0xbf4400b8, h<<16 | w per field:
+ * 540 = 1080i), frame rate from the line length the HDMI transmitter
+ * measures on its input (TX regs 0x26/0x27 = Htotal, MMIO bytes at
+ * 0xbf480000 + reg): 2200 (1080) / 1650 (720) = 60 Hz, 2640 / 1980 = 50 Hz.
+ */
+const char *sdk_video_mode(void) {
+    static char s[24];
+    u32 h = REG32(0xbf4400b8) >> 16;
+    u32 htot = *(volatile unsigned char *) 0xbf480026 |
+               *(volatile unsigned char *) 0xbf480027 << 8;
+    const char *hz = htot == 2200 || htot == 1650 ? "60" :
+                     htot == 2640 || htot == 1980 ? "50" : "";
+
+    if (h == 540) {
+        snprintf(s, sizeof(s), "1080i%s", hz);
+    } else if (h == 1080 || h == 720) {
+        snprintf(s, sizeof(s), "%dp%s", (int) h, hz);
+    } else {
+        snprintf(s, sizeof(s), "%d lines", (int) h);
+    }
+    return s;
+}
+
 /* ---- launcher helpers ---- */
 
 /* Make freshly loaded code visible to instruction fetch */
@@ -738,6 +764,7 @@ void sdk_overlay_tick(void) {
     int cpu, mem;
     char line[64];
 
+    osd_vscale_fix();                           /* 1080p: see osdsetup.h */
     saver_check();
     if ((!sdk_overlay_on && !was_on) || sdk_screen_off) {
         return;

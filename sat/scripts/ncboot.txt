@@ -1,4 +1,7 @@
 echo '### ncboot (satellite box): NCAPPS launcher from USB if present, otherwise stock firmware ###'
+setenv video 1080i
+usb start
+if fatload usb 0 0x81700000 /NCAPPS/SETTINGS.TXT; then setenv video 1080p60; env import -t 0x81700000 ${filesize}; fi
 usb stop
 setenv avenv_AVCPU_CONFIG 64M
 setenv avenv_VIDEO_FW_CFG_SIZE 0x1c01000
@@ -10,12 +13,17 @@ setenv avenv_VID_SD_WR_BACK_FIELD_NO 0x6
 setenv avenv_VID_SD_WR_BACK_ADDR 0xa1df0400
 setenv avenv_SD_ENABLE 1
 setenv nc_bigmem
+setenv ncvmode 0x24060009
+if test "${video}" = 1080p60; then setenv ncvmode 0x2406000a; fi
+if test "${video}" = 1080p50; then setenv ncvmode 0x2406000e; fi
+mw.l 0x81780000 0x24060009
+if cmp.l 0xa13d4114 0x81780000 1; then mw.l 0xa13d4114 ${ncvmode}; echo '=== video' ${video} '==='; else echo '=== video: unknown U-Boot build, left at 1080i ==='; fi
 loadimg 1 lzma 0xb0000 0x81500000 0x83e10000
 av_launch 0x83e10000
 cpu 1 release 0x83e10000
 setenv a 0x80008000
 usb start
-if fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '### starting NCAPPS launcher ###'; go 0x80800000; fi
+if fatload usb 0 0x80800000 /NCAPPS/LAUNCHER.BIN; then echo '=== starting NCAPPS launcher ==='; go 0x80800000; fi
 echo '### no NCAPPS (or launcher exited): booting stock firmware ###'
 loadimg 1 lzma 0x300000 0x81500000 0x80008000
 go 0x80008000
