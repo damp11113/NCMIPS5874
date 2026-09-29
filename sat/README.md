@@ -64,7 +64,8 @@ SW / KEY / FAV on the colour keys, SUB, AUD, EPG, MENU, SAT, TV/RA).
 front panel: the ESP32 is the only device on the box's I2C bus (address
 `0x42`), drives the AiP650 on its own bus, sends the front buttons as IR
 frames, and adds a clock (DS1302 + NTP), a climate sensor (AHT20 +
-BMP280), an SI4713 FM transmitter with RDS, and WiFi. Firmware:
+BMP280), an SI4713 FM transmitter with RDS, and WiFi. Photo, wiring and
+protocol: [`../esp32c3/bridge/README.md`](../esp32c3/bridge/README.md). Firmware:
 `../esp32c3/bridge/bridge.ino`; SDK driver: `../sdk/brimod.h`; settings
 app: `../apps/brimod/`. The SDK detects it at start; a box wired as shipped
 keeps the normal front panel code.

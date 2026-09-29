@@ -1,7 +1,7 @@
 /*
  * NCAPPS bridge: ESP32-C3 Super Mini between the satellite box and its
  * front panel, climate sensor, FM transmitter and clock (Arduino-ESP32 3.x).
- * Wiring: page "ESP32 Bridge Wiring" (continue.md / sat/NOTES.md).
+ * Wiring and overview: esp32c3/bridge/README.md.
  *
  * Arduino IDE: board "ESP32C3 Dev Module" (or "Nologo ESP32C3 Super Mini"),
  * Tools -> USB CDC On Boot: Enabled (log on the USB-C port; GPIO20/21 are

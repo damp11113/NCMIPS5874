@@ -55,7 +55,7 @@ only the patch address differs (README "Video mode").
 | `iptv/scripts/` | IPTV box only: U-Boot scripts (`.txt` -> `.scr` with `mkscript.py`) |
 | `iptv/logs/` | IPTV box serial captures (gitignored) |
 | `sat/` | satellite box: `README.md` (photos, hardware, front panel, remote), `NOTES.md` (all findings), `scripts/` (boot script), `ubmatch.py`, logs; flash dump / U-Boot / firmware images (gitignored) |
-| `esp32c3/bridge/` | satellite box, BriMod only: ESP32-C3 bridge firmware (Arduino; register map in its header) |
+| `esp32c3/bridge/` | satellite box, BriMod only: `README.md` (photo, wiring, protocol), ESP32-C3 bridge firmware (Arduino; full register map in its header) |
 | `SSerHial/` | serial hub: box console over SSH + upload tool (gitignored, local only) |
 
 ## Status per program
