@@ -118,7 +118,12 @@ int _start(int argc, char *argv[]) {
     }
     sdk_box_sat = ub_build() && ub_build()->box == UB_BOX_SAT;
     if (sdk_box_sat) {
-        fd650_init(0x200);
+        fd650_init(FD650_PRESCALE_100K);
+        /* BriMod: no FD650 on the bus (it hangs off the ESP32 bridge).
+         * With the panel chip there, nothing is ever sent to the bridge. */
+        if (fd650_key() < 0) {
+            brimod_detect();
+        }
     }
     heap_regions();
     for (ctor = __init_array_start; ctor < __init_array_end; ctor++) {
@@ -836,6 +841,55 @@ static u32 press_ms;                /* when the held remote button went down */
 
 /* ---- satellite box front panel ---- */
 
+/* ---- I2C on the front-panel bus (satellite box, SoC channel 2) ---- */
+
+/* The panel chip always gets 100 kHz; apps pick their own speed for their
+ * devices (sdk_i2c_speed). The prescaler is switched before a transfer
+ * when it differs, so both can share the bus. */
+static u32 i2c_app_pre = FD650_PRESCALE_100K, i2c_cur_pre = FD650_PRESCALE_100K;
+
+static void i2c_use(u32 pre) {
+    if (pre != i2c_cur_pre) {
+        i2c_set_prescale(I2C_CH_FP, pre);
+        i2c_cur_pre = pre;
+    }
+}
+
+/* For brimod.c, which shares the bus */
+void sdk_i2c_use_prescale(u32 pre) {
+    i2c_use(pre);
+}
+
+int sdk_i2c_speed(int khz) {
+    khz = khz < 1 ? 1 : khz > 1000 ? 1000 : khz;
+    i2c_app_pre = i2c_prescale(khz);
+    return (int) (i2c_scl_hz(i2c_app_pre) / 1000);
+}
+
+int sdk_i2c_write(int addr, const void *data, int len) {
+    if (!sdk_box_sat) {
+        return SDK_I2C_ENOBUS;
+    }
+    i2c_use(i2c_app_pre);
+    return i2c_write(I2C_CH_FP, addr, data, len);
+}
+
+int sdk_i2c_read(int addr, void *data, int len) {
+    if (!sdk_box_sat) {
+        return SDK_I2C_ENOBUS;
+    }
+    i2c_use(i2c_app_pre);
+    return i2c_read(I2C_CH_FP, addr, data, len);
+}
+
+int sdk_i2c_write_read(int addr, const void *wdata, int wlen, void *rdata, int rlen) {
+    if (!sdk_box_sat) {
+        return SDK_I2C_ENOBUS;
+    }
+    i2c_use(i2c_app_pre);
+    return i2c_write_read(I2C_CH_FP, addr, wdata, wlen, rdata, rlen);
+}
+
 /* What this program last wrote; the panel keeps showing it after an app
  * exits, so the launcher calls sdk_panel_invalidate () after each app. */
 static char panel_text[4] = { 1 };          /* never equal to a real text */
@@ -850,6 +904,11 @@ void sdk_panel_invalidate(void) {
 void sdk_panel_show(const char *s) {
     if (sdk_box_sat && strncmp(panel_text, s, 3) != 0) {
         strncpy(panel_text, s, 3);
+        if (sdk_brimod) {
+            brimod_panel_show(s);
+            return;
+        }
+        i2c_use(FD650_PRESCALE_100K);
         fd650_show(s);
     }
 }
@@ -859,6 +918,11 @@ void sdk_panel_led(int on) {
     on = on != 0;
     if (sdk_box_sat && on != panel_led_on) {
         panel_led_on = on;
+        if (sdk_brimod) {
+            brimod_panel_led(on);
+            return;
+        }
+        i2c_use(FD650_PRESCALE_100K);
         fd650_led(on);
     }
 }
@@ -884,6 +948,7 @@ static int fp_poll(int *btn, int *repeat) {
         return 0;
     }
     fp_poll_ms = now;
+    i2c_use(FD650_PRESCALE_100K);
     code = fd650_key();
     if (code < 0 || !(code & FD650_KEY_PRESSED)) {
         fp_held = 0;
@@ -911,6 +976,7 @@ static int fp_poll(int *btn, int *repeat) {
 
 int sdk_key_poll(struct sdk_key *k) {
     struct ir_event ev;
+    int ir;
 
     sdk_overlay_tick();
 
@@ -923,7 +989,8 @@ int sdk_key_poll(struct sdk_key *k) {
     k->repeat = 0;
     k->remote = 0;
 
-    if (ir_poll(&ev) && ev.user == IR_USER_STOCK) {
+    ir = ir_poll(&ev);
+    if (ir && ev.user == IR_USER_STOCK) {
         unsigned int i;
 
         if (saver_key(ev.repeat)) {
@@ -953,7 +1020,20 @@ int sdk_key_poll(struct sdk_key *k) {
         }
         return 0;
     }
-    if (sdk_box_sat) {
+    if (sdk_brimod) {
+        int btn, rep;
+
+        /* front buttons come as the bridge's IR frames, no panel polling */
+        if (ir && brimod_ir_key(&ev, &btn, &rep)) {
+            if (saver_key(rep)) {
+                return 0;
+            }
+            k->btn = btn;
+            k->repeat = rep;
+            k->remote = 1;
+            return 1;
+        }
+    } else if (sdk_box_sat) {
         int btn, rep;
 
         if (fp_poll(&btn, &rep)) {

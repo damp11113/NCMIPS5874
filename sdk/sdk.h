@@ -129,16 +129,40 @@ struct sdk_key {
 };
 
 /* Remote + serial; on the satellite box also its 6 front buttons:
- * CH+ / CH- = UP / DOWN, VOL- / VOL+ = LEFT / RIGHT, OK, MENU. */
+ * CH+ / CH- = UP / DOWN, VOL- / VOL+ = LEFT / RIGHT, OK, MENU (BriMod:
+ * the bridge sends them as IR frames, see brimod.h). */
 int sdk_key_poll(struct sdk_key *k);       /* 1 = got a key */
 const char *sdk_btn_name(int btn);
 
 /* ---- front panel (satellite box; does nothing on the IPTV box) ---- */
 
 extern int sdk_box_sat;                     /* 1 = satellite box (M88CS8002B) */
+extern int sdk_brimod;                      /* 1 = its panel is behind the BriMod bridge */
 void sdk_panel_show(const char *s);        /* up to 3 characters on the display */
 void sdk_panel_led(int on);                /* green LED */
 void sdk_panel_invalidate(void);           /* another program changed the panel */
+
+/* ---- I2C (satellite box: the front-panel bus, SoC channel 2, 3.3 V,
+ * pull-ups on the box; the FD650 panel chip sits at 0x24-0x27 and
+ * 0x34-0x37, or on BriMod boxes the bridge at 0x42 instead).
+ * addr = 7-bit address. Return 0 or one of: ---- */
+
+#define SDK_I2C_ETIMEOUT    (-1)
+#define SDK_I2C_ENACK       (-2)            /* no device at addr, or byte not acknowledged */
+#define SDK_I2C_EBUS        (-3)
+#define SDK_I2C_ENOBUS      (-4)            /* IPTV box: no bus for apps */
+
+/* Speed for the app's transfers in kHz, 100 (default) = standard mode,
+ * 400 = fast mode; returns the real speed (never above the request:
+ * 400 -> 385). The panel chip keeps 100 kHz. */
+int sdk_i2c_speed(int khz);
+int sdk_i2c_write(int addr, const void *data, int len);    /* len 0 = probe */
+int sdk_i2c_read(int addr, void *data, int len);
+/* write, repeated START, read: e.g. a register number, then its value */
+int sdk_i2c_write_read(int addr, const void *wdata, int wlen, void *rdata, int rlen);
+
+/* BriMod bridge (clock, climate, FM, WiFi mailbox, ...) */
+#include "brimod.h"
 
 /* ---- system ---- */
 

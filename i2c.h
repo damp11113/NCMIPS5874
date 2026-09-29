@@ -15,8 +15,7 @@
  *
  * Channels (stock names): 0 i2c0, 1 i2c1, 2 i2c_FP (front panel, pins
  * muxed by 0xbf15b400 low byte = 0x33), 3 i2c_HDMI, 4 i2c_QAM.
- * Channel 2's input clock is not known yet (stock reads it from a clock
- * table at run time), so callers pass the prescaler.
+ * Channel 2's input clock is 27 MHz (measured, see i2c_prescale ()).
  *
  * Polled only; no interrupts. All functions return 0 or a negative
  * I2C_E* code.
@@ -75,8 +74,32 @@ static __attribute__((unused)) int i2c_wait(u32 base) {
     return I2C_E_TIMEOUT;
 }
 
-/* Enable channel ch with the given prescaler (see above) */
-static __attribute__((unused)) int i2c_init(int ch, u32 prescale) {
+/*
+ * Bus speed. Channel 2's input clock is 27 MHz (scope: prescale 0x200 gave
+ * 10.7 kHz SCL); the other channels are assumed to use the same clock.
+ * i2c_prescale () rounds so that SCL never exceeds the request:
+ * 100 kHz (standard mode) -> 0x35 = 100.0 kHz, 400 kHz (fast mode) ->
+ * 0x0d = 385.7 kHz, 1000 kHz -> 5 = 900 kHz.
+ */
+#define I2C_CLK_HZ      27000000u
+
+static __attribute__((unused)) u32 i2c_prescale(u32 khz) {
+    u32 div;
+
+    if (khz < 1) {
+        khz = 1;
+    }
+    div = 5 * khz * 1000;
+    return (I2C_CLK_HZ + div - 1) / div - 1;
+}
+
+/* SCL in Hz for a prescaler */
+static __attribute__((unused)) u32 i2c_scl_hz(u32 prescale) {
+    return I2C_CLK_HZ / (5 * (prescale + 1));
+}
+
+/* Change the prescaler of an enabled channel (between transfers) */
+static __attribute__((unused)) int i2c_set_prescale(int ch, u32 prescale) {
     u32 base = i2c_base(ch);
 
     if (!base) {
@@ -84,6 +107,17 @@ static __attribute__((unused)) int i2c_init(int ch, u32 prescale) {
     }
     REG8(base + I2C_PRE_HI) = (prescale >> 8) & 0xff;
     REG8(base + I2C_PRE_LO) = prescale & 0xff;
+    return 0;
+}
+
+/* Enable channel ch with the given prescaler (see above) */
+static __attribute__((unused)) int i2c_init(int ch, u32 prescale) {
+    u32 base = i2c_base(ch);
+
+    if (!base) {
+        return I2C_E_CHANNEL;
+    }
+    i2c_set_prescale(ch, prescale);
     REG8(base + I2C_CTRL) = 0x80;
     return 0;
 }
@@ -152,6 +186,33 @@ static __attribute__((unused)) int i2c_read(int ch, int addr, unsigned char *dat
     r = i2c_write_byte(base, (unsigned char) ((addr << 1) | 1), 1);
     for (i = 0; r == 0 && i < len; i++) {
         r = i2c_read_byte(base, &data[i], i == len - 1);
+    }
+    i2c_stop(base);
+    return r;
+}
+
+/*
+ * Write wlen bytes, then a repeated START and read rlen bytes, one STOP at
+ * the end: the usual "write register number, read its value" transfer
+ * (START + WRITE while the bus is still ours = repeated START).
+ */
+static __attribute__((unused)) int i2c_write_read(int ch, int addr, const unsigned char *wdata,
+                                                  int wlen, unsigned char *rdata, int rlen) {
+    u32 base = i2c_base(ch);
+    int i, r;
+
+    if (!base) {
+        return I2C_E_CHANNEL;
+    }
+    r = i2c_write_byte(base, (unsigned char) (addr << 1), 1);
+    for (i = 0; r == 0 && i < wlen; i++) {
+        r = i2c_write_byte(base, wdata[i], 0);
+    }
+    if (r == 0) {
+        r = i2c_write_byte(base, (unsigned char) ((addr << 1) | 1), 1);
+    }
+    for (i = 0; r == 0 && i < rlen; i++) {
+        r = i2c_read_byte(base, &rdata[i], i == rlen - 1);
     }
     i2c_stop(base);
     return r;

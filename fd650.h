@@ -17,6 +17,15 @@
 #include "i2c.h"
 
 #define FD650_PINMUX    0xbf15b400u
+
+/*
+ * The panel runs at 100 kHz (standard mode, the stock firmware's speed):
+ * prescaler 0x35, see i2c_prescale (). Before (0x200 = 10.7 kHz) one key
+ * read (~20 clocks) busy-waited ~1.9 ms, every 30 ms in sdk_key_poll:
+ * ~6 % CPU in an idle menu.
+ */
+#define FD650_PRESCALE_100K 0x35
+
 #define FD650_CTRL      0x24
 #define FD650_KEY       0x27
 #define FD650_DIG0      0x34

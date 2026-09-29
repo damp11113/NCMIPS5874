@@ -14,7 +14,7 @@
 ## Board facts
 
 - U-Boot 2012.04 (May 09 2026 - 09:21:12), 38400 baud, `ddrsize=128`, `chipver=10`, `pinmux=1`.
-- Firmware model string `Model_02_cs8001b_64m_internet` (source path `CS8001B_GMMZ_64M_internet`).
+- Firmware model string `Model_02_cs8001b_64m_internet` (source path `CS8001B_<vendor>_64M_internet`).
 - CPU identical to the IPTV box (cpuinfo: 24KEc, Count 324 MHz, 430 MIPS); USB speeds identical
   (usbspeed: U-Boot 1.6 MB/s, own BOT 26.6 MB/s). Only the stick on the USB bus (no WiFi module).
 
@@ -68,6 +68,71 @@ The stock firmware uses only the low 64 MB (AV core at 0x83e10000, video memory 
 ## Front panel: verified on HW (fptest, 2026-09-26)
 
 - Own driver (`i2c.h` + `fd650.h`) works: prescaler 0x200 on channel 2, display on, keys read.
+- 2026-09-30: scope on SDA/SCL (clean 3.3 V, pull-ups on the box): prescaler 0x200 = 10.7 kHz SCL,
+  so channel 2's input clock is 27 MHz (SCL = 27 MHz / (5 * (pre + 1))). At that speed one key read
+  busy-waited ~1.9 ms every 30 ms (~6 % CPU in the idle launcher). Now `FD650_PRESCALE_100K` = 0x35
+  (100 kHz, the stock speed) in the SDK, irpanel and fptest (built, not yet run on HW).
+- 2026-09-30, **the front bus can't be shared** (adstest.c, i2cscan example, manual register pokes):
+  with the panel connected every address ACKs (status after the address byte 0x44, bit 7 never set)
+  and every read from another address fails with status bit 5 (0x6c); only the FD650's own key read
+  (0x27) works. Same with the ADS1115 removed, so the FD650 causes it: it ACKs every byte, including
+  bytes the master reads, overriding the master's NACK. Panel unplugged: clean NACKs (status 0x84) at
+  100 kHz; at 400 kHz bus errors, so the pull-ups are probably on the panel board. The stock driver
+  checks the same bits (channel table 0x806f7ef8: pointer 4 = +0x04 status, 6 = +0x14 command).
+  i2c.h now takes the speed in kHz from the 27 MHz clock (`i2c_prescale`), plus `i2c_write_read`
+  (repeated START); SDK `sdk_i2c_speed/write/read/write_read`, panel keeps 100 kHz. Plan: an ESP32
+  (NodeMCU32) as the only slave on the box bus, FD650 on the ESP32's software I2C, sensors on its
+  hardware I2C (wiring page "ESP32 Bridge Wiring").
+- 2026-09-30: the board is an **ESP32-C3 Super Mini** (one hardware I2C = slave 0x42 for the box on
+  GPIO8/9 (strapping pins: box-link pull-ups keep GPIO9 high at boot; an ESP32 reset while the box is
+  off can leave it in download mode); panel FD650 on software I2C GPIO6/7, sensors on software I2C
+  GPIO4/5, DS1302 module RST/CLK/DAT on 21/10/20 (bridge.ino; the wiring page still shows
+  10/21/20), no ADS1115,
+  SI4713 RST GPIO2 (+10k pull-up), IR doorbell GPIO3 via Schottky). Firmware `esp32c3/bridge/bridge.ino`
+  (register map + mailbox commands in its header; front buttons -> NEC frames user 0xA55A with the
+  FD650 key code, events user 0xA55B). Compiles with arduino-cli + esp32 core 3.3.10
+  (fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc), not yet flashed / run.
+- 2026-09-30, **BriMod** (box with the bridge) SDK driver `sdk/brimod.h` / `sdk/brimod.c`, linked
+  into every SDK app (sdk/build.sh, doom/build.sh). Detection in `_start`: FD650 init as before, then
+  only if the FD650 key read fails (no panel chip on the bus) read "NCB1" + version from 0x42 ->
+  `sdk_brimod = 1`. A box with the panel wired as shipped never gets a transfer to 0x42, and the FD650
+  code paths (fp_poll, fd650_show/led) are unchanged; with BriMod `sdk_panel_show/led` and
+  `led_green` write the bridge's digit registers 0xA0-A3 (same fd650_char mapping, one transfer),
+  sdk_key_poll maps IR user 0xA55A (FD650 key codes) to BTN_* with the remote's 400 ms repeat delay
+  and collects user 0xA55B doorbell bits (`brimod_doorbell ()`), no panel polling. API: raw
+  `brimod_read/write`, present / config / events / bell mask, clock (`brimod_time` with local date,
+  set time / tz), climate, ADC, FM + RDS, panel raw / brightness, mailbox (`brimod_cmd` blocking,
+  or start / status / reply). The bus prescaler is shared with the app's `sdk_i2c_*` speed
+  (`sdk_i2c_use_prescale`). Read = request {0xFF, reg, n}, 300 us, read n; a failed read is
+  followed by a 1-byte read so the stale reply leaves the C3's TX FIFO (the core flushes it at the
+  STOP of a read). The C3 stretches SCL after a read address until its slave task runs.
+  Bridge changes with it: held front buttons resend the full NEC frame every 110 ms (the box's
+  decoder is only verified with full frames + one repeat code), NEC timing by RMT (open drain kept
+  via `gpio_od_enable`, one high symbol at init because the channel idles low), reply offset 0xC8
+  moves on after each read, the WIFI command is not logged (password).
+- 2026-09-30, BriMod settings app `apps/brimod/` = NCAPPS/APPS/BRIMOD: menus Status / WiFi (scan
+  list, on-screen keyboard for the password, masked except the last typed character, INFO shows it;
+  hidden network by name; forget) / FM transmitter / Clock (time zone, NTP, set by hand) / restart
+  the bridge. Keyboard: arrows + OK, digits type directly, RED del, GREEN done, YELLOW shift, BLUE
+  space; serial PC keyboard types too. FM page = every SI4713 setting: on/off, frequency (typed or
+  0.05 MHz steps), power, antenna cap (auto / manual), stereo / mono, pre-emphasis 50 / 75 / off,
+  audio / pilot / RDS deviation (sum shown, warn > 75 kHz), line input range + full scale, mute,
+  limiter + release, compressor on / threshold / gain / attack / release, RDS on, PS, RadioText, PI,
+  PTY (names), music / speech, TP, TA, AF, clock time (CT), PS share, pilot frequency, noise scan
+  (pick one of the 5 quietest), defaults; live noise / antenna / input level meter with
+  overmodulation. Bridge side for it: FM flags bit2 mono (pilot + L-R off, RDS DI stereo bit
+  follows), 0x44 antenna cap, 0x45 RDS options (bit0 CT: group 4A through the RDS FIFO at each
+  minute, FIFO size 4 blocks only while CT is on), 0x30-0x33 noise / antenna in use / ASQ flags /
+  input dBFS (TX_ASQ_STATUS 4x a second while on air, overmod held 1 s), property window 0x90
+  (table of 16 settable properties with defaults, set / select + read), FM regs + RDS + properties
+  saved in NVS 3 s after the last change and applied at boot (the transmitter comes back after
+  power-off), `FMDEFAULTS`, `WIFI<tab>ssid<tab>password` (spaces), `WIFI?` = "CONNECTED ip rssi
+  dBm ssid" / "DISCONNECTED saved-ssid", clearer connect errors, RadioText A/B flag flips when the
+  text changes. SDK: `brimod_fm_write`, `brimod_si_get/set` + `BRIMOD_SI_*`, `brimod_rds_get`,
+  `brimod_fm_defaults`, `brimod_fm_scan`, `brimod_wifi_status/scan/connect/forget`,
+  `brimod_ntp_sync`, `brimod_make_time`. Built + staged, not yet run on HW (bridge not flashed).
+  Unverified assumptions: SI4713 RDS buffer big enough for 16 RT groups + 4 FIFO blocks; the
+  box's I2C master waits while the C3 stretches SCL.
 - Panel 650G11B: 3 digits + green LED D1 on the FD650's 4 digit registers. Segment wiring is
   not standard: standard bit a b c d e f g dot -> FD650 bit 6 0 2 4 5 7 1 3 (stock font table
   at 0x8076e6ac, character + segments pairs, `fd650_map ()`).

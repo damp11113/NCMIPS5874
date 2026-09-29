@@ -236,6 +236,7 @@ addresses) in `continue.md`.
 | `regwatch.c`, `regdump.c`, `snap*.c`, `regapply.c`, `vicset.c`, `vsyncprobe.c`, `irscan.c` | hardware exploration tools |
 | `xref.py`, `ubxref.py`, `accessors.py`, `diffsnap.py` | firmware / U-Boot analysis scripts |
 | `bench/` | dspbench: SF2 / OPL / MP3 / DOOM hot loops, plain vs `-mdsp`, checked against the committed code |
+| `sdk/brimod.h`, `sdk/brimod.c`, `esp32c3/bridge/bridge.ino`, `apps/brimod/` | BriMod: ESP32-C3 bridge on the satellite box's front I2C bus (panel, front buttons as IR frames, clock, climate, FM + RDS, WiFi), its SDK driver and settings app |
 | `iptv/firmware/` (`backup.bin`, `app_ram.bin`, `uboot_part.bin`, `avcpu.bin`) | flash dump and extracted images |
 | `BOXES.md` | which file works on which box (IPTV / satellite) |
 | `continue.md` | full notes |

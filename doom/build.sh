@@ -84,11 +84,12 @@ ${CROSS}gcc $CFLAGS -Wall -c ../sdk/opl.c -o $OBJ/opl.o
 ${CROSS}gcc $CFLAGS -Wall -c dg_debug.c -o $OBJ/dg_debug.o
 ${CROSS}gcc $CFLAGS -c ../sdk/libc/ub_exports.S -o $OBJ/ub_exports.o
 ${CROSS}gcc $CFLAGS -Wall -c ../sdk/runtime.c -o $OBJ/runtime.o
+${CROSS}gcc $CFLAGS -Wall -c ../sdk/brimod.c -o $OBJ/brimod.o
 
 ${CROSS}gcc -EL -msoft-float -nostdlib -static -no-pie \
     -Wl,--gc-sections -Wl,--build-id=none -Wl,--no-warn-rwx-segments \
     -Wl,--require-defined=_start -Wl,--defsym=LOAD_ADDR=0x80008000 -T ../link.ld \
-    -o doom.elf $OBJ/runtime.o $OBJ/dg_nc5874.o $OBJ/dg_sound.o $OBJ/dg_music.o $OBJ/opl.o $OBJ/dg_debug.o $(for s in $SRC; do echo $OBJ/$s.o; done) \
+    -o doom.elf $OBJ/runtime.o $OBJ/brimod.o $OBJ/dg_nc5874.o $OBJ/dg_sound.o $OBJ/dg_music.o $OBJ/opl.o $OBJ/dg_debug.o $(for s in $SRC; do echo $OBJ/$s.o; done) \
     $DEH_OBJ $OBJ/libc.o $OBJ/ub_exports.o ../softfp/libsoftfp.a -lgcc 2>&1 \
     | grep -vE "uses -mhard-float|linking abicalls files with non-abicalls" || true
 ${CROSS}objcopy -O binary doom.elf doom.bin

@@ -25,9 +25,10 @@ else
 fi
 # SDK apps and the NCAPPS launcher
 sh sdk/build.sh build_sdk/HELLO.BIN sdk/examples/hello.c || echo "FAILED hello"
+OBJ=build_i2cscan sh sdk/build.sh build_sdk/I2CSCAN.BIN sdk/examples/i2cscan.c || echo "FAILED i2cscan"
 LOAD=0x80800000 MAX_END=0x80a00000 OBJ=build_launcher sh sdk/build.sh launcher/LAUNCHER.BIN launcher/launcher.c launcher/crash_entry.S || echo "FAILED launcher"
 [ -d doom/doomgeneric ] && [ -d doom/chocolate ] && { sh doom/build.sh || echo "FAILED doom"; }
-for app in sysinfo music midi; do sh apps/$app/build.sh || echo "FAILED $app"; done
+for app in sysinfo music midi brimod; do sh apps/$app/build.sh || echo "FAILED $app"; done
 # IPTV box boot scripts (flash layout and AV memory map of that box)
 S=iptv/scripts
 python3 mkscript.py $S/ncboot.txt $S/ncboot.scr || echo "FAILED ncboot.scr"

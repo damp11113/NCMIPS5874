@@ -49,6 +49,35 @@ static inline void osd_vscale_fix(void) {
     }
 }
 
+/*
+ * HDMI AVI InfoFrame. U-Boot writes it to the HDMI transmitter's bank 1
+ * (0xbf480100: 82 02 0d <sum> <PB1> ...; PB1 bits 6:5 = colour format,
+ * 2 = YCbCr444) and then sets INFO_PKTCTRL1 (bank 1 reg 0xc0) bit 5
+ * (repeat every frame) and bit 4 (enable). Its "Output video color format"
+ * print reads only the data bytes, so a boot can log YCbCr444 while the
+ * frame is not being sent; the TV then shows the YCbCr picture as RGB
+ * (purple background, green text), seen on the satellite box after
+ * standby. Prints the state on serial and turns sending on if a valid
+ * frame is prepared but not enabled. Returns 1 if it changed something.
+ */
+#define HDMI_TX_B1(r)   (*(volatile unsigned char *) (0xbf480100u + (r)))
+
+static inline int hdmi_avi_check(void) {
+    unsigned char ctl = HDMI_TX_B1(0xc0), ctl2 = HDMI_TX_B1(0xc1);
+    int fix = HDMI_TX_B1(0x00) == 0x82 && HDMI_TX_B1(0x02) == 0x0d && (ctl & 0x30) != 0x30;
+
+    printf("hdmi: AVI %02x %02x %02x %02x %02x %02x %02x %02x, pktctrl %02x %02x, "
+           "mode %02x, phy %08x%s\n",
+           HDMI_TX_B1(0), HDMI_TX_B1(1), HDMI_TX_B1(2), HDMI_TX_B1(3), HDMI_TX_B1(4),
+           HDMI_TX_B1(5), HDMI_TX_B1(6), HDMI_TX_B1(7), ctl, ctl2,
+           *(volatile unsigned char *) 0xbf480007u, REG32(0xbf157000),
+           fix ? " -> AVI sending was off, turned on" : "");
+    if (fix) {
+        HDMI_TX_B1(0xc0) = ctl | 0x30;
+    }
+    return fix;
+}
+
 /* Fills fb, returns 0 on success, -1 if the display is not running */
 static inline int osd_setup(struct fb *fb) {
     volatile u32 *hdr = (volatile u32 *) (0xa0000000u | OSD_HDR_PHYS);
@@ -59,6 +88,7 @@ static inline int osd_setup(struct fb *fb) {
     if (dst_w < 640 || dst_w > 1920 || dst_h < 240 || dst_h > 1080) {
         return -1;
     }
+    hdmi_avi_check();
 
     /* Region header, same layout as the stock firmware's */
     for (i = 0; i < 18; i++) {

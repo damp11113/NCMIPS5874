@@ -11,9 +11,10 @@
 #   DSP=-mdsp             MIPS DSP ASE rev 1 (default; the 24KEc has it and
 #                         U-Boot runs with Status.MX = 1); DSP= builds plain
 #                         mips32r2 code
-# Links: sdk/runtime.c (entry, files, input), sdk/libc, U-Boot export
-# stubs, soft-float (softfp/libsoftfp.a) and libgcc. No FPU instructions
-# are allowed (the 24KEc has none); the build checks that.
+# Links: sdk/runtime.c (entry, files, input), sdk/brimod.c (BriMod bridge),
+# sdk/libc, U-Boot export stubs, soft-float (softfp/libsoftfp.a) and
+# libgcc. No FPU instructions are allowed (the 24KEc has none); the build
+# checks that.
 set -e
 SDK=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SDK/.." && pwd)
@@ -55,13 +56,14 @@ for f in $QUIET_SRC; do
     OBJS="$OBJS $o"
 done
 ${CROSS}gcc $CFLAGS -c $SDK/runtime.c -o $OBJ/sdk_runtime.o
+${CROSS}gcc $CFLAGS -c $SDK/brimod.c -o $OBJ/sdk_brimod.o
 ${CROSS}gcc $CFLAGS -c $SDK/libc/libc.c -o $OBJ/sdk_libc.o
 ${CROSS}gcc $CFLAGS -c $SDK/libc/ub_exports.S -o $OBJ/sdk_ub_exports.o
 
 ${CROSS}gcc -EL -msoft-float -nostdlib -static -no-pie \
     -Wl,--gc-sections -Wl,--build-id=none -Wl,--no-warn-rwx-segments \
     -Wl,--require-defined=_start -Wl,--defsym=LOAD_ADDR=$LOAD -T $ROOT/link.ld \
-    -o $ELF $OBJ/sdk_runtime.o $OBJS $OBJ/sdk_libc.o $OBJ/sdk_ub_exports.o \
+    -o $ELF $OBJ/sdk_runtime.o $OBJ/sdk_brimod.o $OBJS $OBJ/sdk_libc.o $OBJ/sdk_ub_exports.o \
     $ROOT/softfp/libsoftfp.a -lgcc 2>&1 \
     | grep -vE "uses -mhard-float|linking abicalls files with non-abicalls" || true
 ${CROSS}objcopy -O binary $ELF $OUT

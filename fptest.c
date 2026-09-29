@@ -89,7 +89,7 @@ static void scan(void) {
 }
 
 int main(int argc, char *argv[]) {
-    u32 pre = argc > 1 ? parse_hex(argv[1]) : 0x200;
+    u32 pre = argc > 1 ? parse_hex(argv[1]) : FD650_PRESCALE_100K;
     int bright = 4, last = -1, led = 1, r, i;
 
     printf("fptest: FD650 front panel, prescaler 0x%x\n", pre);

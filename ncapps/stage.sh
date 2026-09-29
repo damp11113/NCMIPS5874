@@ -57,6 +57,8 @@ done
 put "$ROOT/badapple.bin" "$NC/APPS/BADAPPLE/APP.BIN"
 put "$ROOT/badapple.bav" "$NC/APPS/BADAPPLE/BADAPPLE.BAV"
 put "$ROOT/build_sdk/HELLO.BIN" "$NC/APPS/HELLO/APP.BIN"
+put "$ROOT/build_sdk/I2CSCAN.BIN" "$NC/APPS/I2CSCAN/APP.BIN"
+put "$ROOT/apps/brimod/BRIMOD.BIN" "$NC/APPS/BRIMOD/APP.BIN"
 put "$ROOT/tvapp.bin" "$NC/APPS/TVDEMO/APP.BIN"
 put "$ROOT/apps/sysinfo/SYSINFO.BIN" "$NC/APPS/SYSINFO/APP.BIN"
 put "$ROOT/apps/music/MUSIC.BIN" "$NC/APPS/MUSIC/APP.BIN"

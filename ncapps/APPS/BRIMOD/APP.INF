@@ -1,0 +1,3 @@
+name=BriMod
+desc=ESP32 bridge on the satellite box: WiFi connect, FM transmitter (all SI4713 settings, RDS), clock (NTP or by hand), live status.
+bin=APP.BIN

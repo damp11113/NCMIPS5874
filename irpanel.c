@@ -46,7 +46,7 @@ int main() {
     ir_init();
     dump_ir("after ");
 
-    panel = fd650_init(0x200) == 0;
+    panel = fd650_init(FD650_PRESCALE_100K) == 0;
     if (panel) {
         fd650_show("ir");
         fd650_led(0);

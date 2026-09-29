@@ -40,6 +40,7 @@ only the patch address differs (README "Video mode").
 | Soft standby / reboot | POWER, STANDBY wakes | POWER, front MENU wakes |
 | EXIT to the stock firmware | yes (with big memory: via restart) | yes |
 | WiFi (`rtl*` programs) | yes (internal RTL8188FTV) | no WiFi module (only a USB one would work) |
+| BriMod: ESP32-C3 bridge on the front I2C bus (`sdk/brimod.h`, `esp32c3/bridge/`) | - | optional: panel + front buttons through the bridge, clock (DS1302 / NTP), AHT20 + BMP280, SI4713 FM + RDS, WiFi; settings app BRIMOD; found at app start, the as-shipped panel path is used otherwise (built, not yet run) |
 | Hardware video decoding | experiments (`iptv/hooks/vdectest`) | not started |
 
 ## Folders
@@ -48,11 +49,13 @@ only the patch address differs (README "Video mode").
 |---|---|
 | root (`*.c`, `*.h`, `build*.sh`, `mk*.py`) | shared: U-Boot runtime, headers, test and exploration tools |
 | `sdk/`, `launcher/`, `apps/`, `doom/`, `ncapps/` | shared: NCAPPS SDK, launcher, apps, staging |
+| `iptv/README.md` | IPTV box: photos, hardware, remote, flash layout, what works |
 | `iptv/firmware/` | IPTV box flash dump + extracted images (gitignored, private) |
 | `iptv/hooks/` | IPTV box only: code patched into its stock firmware / U-Boot |
 | `iptv/scripts/` | IPTV box only: U-Boot scripts (`.txt` -> `.scr` with `mkscript.py`) |
 | `iptv/logs/` | IPTV box serial captures (gitignored) |
-| `sat/` | satellite box: `NOTES.md` (all findings), `scripts/` (boot script), `ubmatch.py`, logs; flash dump / U-Boot / firmware images (gitignored) |
+| `sat/` | satellite box: `README.md` (photos, hardware, front panel, remote), `NOTES.md` (all findings), `scripts/` (boot script), `ubmatch.py`, logs; flash dump / U-Boot / firmware images (gitignored) |
+| `esp32c3/bridge/` | satellite box, BriMod only: ESP32-C3 bridge firmware (Arduino; register map in its header) |
 | `SSerHial/` | serial hub: box console over SSH + upload tool (gitignored, local only) |
 
 ## Status per program

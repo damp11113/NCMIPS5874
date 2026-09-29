@@ -43,16 +43,21 @@ unsigned long ub_get_timer(unsigned long base);
  * Per-box board functions. board.h is the IPTV box (LEDs on GPIO 70/71,
  * STANDBY on GPIO 11); those pins are unknown on the satellite box, so
  * there STANDBY reads "not pressed" and the green LED is the front
- * panel's (FD650). sdk_box_sat is set by the runtime from the U-Boot build.
+ * panel's (FD650). sdk_box_sat is set by the runtime from the U-Boot build;
+ * sdk_brimod = 1 when the panel hangs off the ESP32 bridge (sdk/brimod.h).
  */
 extern int sdk_box_sat;
+extern int sdk_brimod;
+void brimod_panel_led(int on);
 
 static inline int box_standby_pressed(void) {
     return sdk_box_sat ? 0 : standby_pressed();
 }
 
 static inline void box_led_green(int on) {
-    if (sdk_box_sat) {
+    if (sdk_brimod) {
+        brimod_panel_led(on);
+    } else if (sdk_box_sat) {
         fd650_led(on);
     } else {
         led_green(on);

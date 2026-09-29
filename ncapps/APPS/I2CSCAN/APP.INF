@@ -1,0 +1,3 @@
+name=I2C scan
+desc=Lists the devices on the front-panel I2C bus (satellite box) at 100 kHz and 400 kHz, with the time per address probe. OK scans again, EXIT quits.
+bin=APP.BIN
