@@ -1,4 +1,4 @@
-# Bare-metal apps on a Nationalchip 5874 set-top box
+# Bare-metal apps on a cheap set-top box
 
 <img width="4080" height="2296" alt="20260925_055207" src="https://github.com/user-attachments/assets/ade16948-5731-4803-a8c1-39fbd4badce7" />
 <img width="4080" height="2296" alt="20260925_055132" src="https://github.com/user-attachments/assets/fcc1f144-5607-45e4-ae96-faa9fe81e5af" />
