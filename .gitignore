@@ -82,3 +82,6 @@ sat/*_strings.txt
 
 # SSerHial: serial <-> SSH hub (PyserSSH copy, host key, logs); local tool, not part of the project
 SSerHial/
+
+# FreeRTOS QEMU test build output
+rtos/qemu/build/

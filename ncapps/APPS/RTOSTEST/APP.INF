@@ -1,0 +1,3 @@
+name=RTOS test
+desc=FreeRTOS on the box: 8 tasks with preemption, register / DSP / queue checks. BACK stops the scheduler and shows PASS or FAIL.
+bin=APP.BIN

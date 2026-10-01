@@ -131,9 +131,16 @@ static inline void aud_reset(void) {
     AUD_REG(0x80) = 0;
 }
 
+#ifdef SDK_H
+void sdk_audio_claim(void);         /* runtime.c: background music pauses */
+#endif
+
 static inline void audio_start(void) {
     u32 i;
 
+#ifdef SDK_H
+    sdk_audio_claim();
+#endif
     AUD_REG(0x00) = 0x115;                         /* idle value */
     aud_reset();
     aud_clear(AUD_BUF_PHYS, AUD_BUF_SIZE);

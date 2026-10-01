@@ -156,3 +156,20 @@ crash_stack:
     .space 16384
     .globl crash_stack_top
 crash_stack_top:
+
+/*
+ * Under the system (system.c): launcher_rtos_crash () points the crashed
+ * UI task here. Same as crash_handler's return path: U-Boot's gd back in
+ * $k0, the crash stack (the task's stack may be the problem), then the
+ * crash screen. crash_resume () does not return.
+ */
+    .text
+    .globl crash_rtos_tramp
+crash_rtos_tramp:
+    lui     $k0, %hi(gd_value)
+    lw      $k0, %lo(gd_value)($k0)
+    lui     $sp, %hi(crash_stack_top)
+    addiu   $sp, $sp, %lo(crash_stack_top)
+    addiu   $sp, $sp, -64
+    j       crash_resume
+    nop

@@ -202,4 +202,34 @@ const char *sdk_video_mode(void);
 void sdk_cache_sync(u32 start, u32 len);
 void sdk_libc_reset(void);
 
+/* ---- NCAPPS system: the launcher running FreeRTOS (sdk/sys.h) ---- */
+
+#include "sys.h"
+
+/* The stick was pulled out or put back since this changed (with the
+ * system, or the launcher's own hot-plug); files reopen on the new mount */
+u32 sdk_storage_gen(void);
+int sdk_storage_present(void);         /* 0 = no stick right now */
+void sdk_audio_claim(void);            /* audio_start () calls it: background music pauses */
+
+/* For the launcher when it hosts the system */
+int sdk_key_read(struct sdk_key *k);   /* hardware keys, no saver / MUTE handling */
+int sdk_storage_poll(void);            /* hot-plug, a few times a second: 1 = changed */
+int sdk_raw_read(u32 start, u32 count, void *buf);
+int sdk_raw_write(u32 sector, const void *buf);
+void sdk_usb_lock(void);               /* weak in runtime.c: the host's mutex */
+void sdk_usb_unlock(void);
+extern void (*sdk_idle_hook)(u32 us);
+extern u32 (*sdk_idle_source)(void);
+extern int (*sdk_key_source)(struct sdk_key *k);
+extern int sdk_hotplug;
+
+/* Around a FreeRTOS scheduler (runtime.c): U-Boot's get_timer keeps its
+ * time in CP0 Compare, which the tick needs. own () points it at a
+ * Count-based clock (-1: U-Boot's code not recognised, don't start the
+ * scheduler), tick () from vApplicationTickHook, release () after. */
+int sdk_timer_own(void);
+void sdk_timer_tick(void);
+void sdk_timer_release(void);
+
 #endif

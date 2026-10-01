@@ -91,6 +91,14 @@ static inline u32 ufs_le32(const unsigned char *p) {
 
 static int ufs_lost;
 
+/*
+ * Someone else owns the stick (the NCAPPS system under FreeRTOS, see
+ * sdk/sys.h): whole-sector reads / writes go through these instead of
+ * U-Boot, so only one task ever drives USB. 0 = ok, -1 = error.
+ */
+static int(*ufs_ext_read) (u32 start, u32 count, void *buf);
+static int(*ufs_ext_write) (u32 sector, const void *buf);
+
 static inline int ufs_stick_present(void) {
 #ifdef UFS_NO_PORT_CHECK
     return 1;                               /* PC tests on disk images */
@@ -213,6 +221,15 @@ static int ufs_bot_read(u32 lba, u32 n, unsigned char *dst) {
 static int ufs_sectors(u32 start, u32 count, void *buf) {
     u32 t0 = ufs_count(), got;
 
+    if (ufs_ext_read) {
+        if (ufs_lost || ufs_ext_read(start, count, buf) < 0) {
+            ufs_lost = 1;
+            return -1;
+        }
+        ufs_ticks += ufs_count() - t0;
+        ufs_bytes += count * UFS_SECTOR;
+        return 0;
+    }
     if (ufs_lost || !ufs_stick_present()) {
         ufs_lost = 1;
         return -1;
@@ -248,6 +265,42 @@ static int ufs_sectors(u32 start, u32 count, void *buf) {
         return -1;
     }
     return 0;
+}
+
+/* Write one 512-byte sector (through ufs_ext_write, or U-Boot's
+ * usb_stor_write, block_dev_desc_t +100, from an aligned copy written back
+ * to RAM for the DMA). Returns 0, or -1. */
+__attribute__((unused))
+static int ufs_write_sector(u32 sec, const void *data) {
+    typedef u32(*ub_blk_write_t) (int dev, u32 start, u32 blkcnt, const void *buffer);
+    static unsigned char wbuf[UFS_SECTOR] __attribute__((aligned(64)));
+    u32 write_fn;
+
+    if (ufs_ext_write) {
+        return ufs_ext_write(sec, data);
+    }
+    if (ufs_lost || !ufs_stick_present()) {
+        ufs_lost = 1;
+        return -1;
+    }
+    write_fn = *(u32 *) ((char *) ufs_dev + 100);
+    if (write_fn < 0x80000000u || write_fn >= 0x82000000u) {
+        return -1;
+    }
+    memcpy(wbuf, data, UFS_SECTOR);
+#ifdef __mips__
+    {
+        u32 a;
+
+        for (a = (u32) wbuf; a < (u32) wbuf + UFS_SECTOR; a += 32) {
+            __asm__ volatile("cache 0x15, 0(%0)" : : "r" (a) : "memory");
+        }
+        __asm__ volatile("sync" : : : "memory");
+    }
+#endif
+    ub_target = write_fn;
+    return ((ub_blk_write_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), sec, 1,
+                                                 wbuf) == 1 ? 0 : -1;
 }
 
 static u32 ufs_fat_next(u32 c) {
@@ -329,7 +382,9 @@ static int ufs_mount(void) {
         return -1;
     }
     ufs_read_fn = *(u32 *) ((char *) ufs_dev + 96);
-    ufs_bot_init();
+    if (!ufs_ext_read) {
+        ufs_bot_init();
+    }
 
     if (ufs_sectors(0, 1, ufs_sec) < 0 || b[510] != 0x55 || b[511] != 0xaa) {
         printf("usbfat: cannot read sector 0\n");
@@ -380,6 +435,43 @@ static int ufs_mount(void) {
             ufs_clus_bytes / 1024, (char *) ufs_dev + 65,
             ufs_bot_dev ? "fast reads" : "U-Boot reads");
     return 0;
+}
+
+/*
+ * Hot-plug: a stick was plugged in (again). What U-Boot's "usb reset" does
+ * (usb_stop, usb_init, usb_stor_scan (1), retried like the vendor's do_usb),
+ * then mount it. Returns 0, or -1. Blocks for a second or two.
+ */
+__attribute__((unused))
+static int ufs_remount(void) {
+    typedef void(*ub_void_t) (void);
+    typedef int(*ub_int_t) (int);
+    const struct ub_build *b = ub_build();
+    int i;
+
+    if (!b || !b->usb_init) {
+        return -1;
+    }
+    for (i = 0; i < 3; i++) {
+        ufs_lost = 0;
+        ufs_bot_dev = 0;
+        ufs_fat_cached = 0xffffffffu;
+        ub_target = b->usb_stop + ub_reloc_off();
+        ((ub_void_t) (void *) ub_thunk) ();
+        ub_target = b->usb_init + ub_reloc_off();
+        if (((ub_int_t) (void *) ub_thunk) (0) < 0) {
+            continue;
+        }
+        ub_target = b->usb_stor_scan + ub_reloc_off();
+        if (((ub_int_t) (void *) ub_thunk) (1) != 0) {
+            continue;
+        }
+        if (ufs_mount() == 0) {
+            return 0;
+        }
+    }
+    ufs_lost = 1;
+    return -1;
 }
 
 /* Load the chunk holding f->pos into f->cbuf. Returns 0, or -1. */
@@ -758,7 +850,6 @@ static int ufs_open(struct ufile *f, const char *path) {
  */
 __attribute__((unused))
 static int ufs_overwrite(const char *path, const void *data, const char *magic) {
-    typedef u32(*ub_blk_write_t) (int dev, u32 start, u32 blkcnt, const void *buffer);
     struct udirent e;
     u32 sec, write_fn, got;
     int mlen = 0;
@@ -779,7 +870,7 @@ static int ufs_overwrite(const char *path, const void *data, const char *magic) 
         return -1;
     }
     write_fn = *(u32 *) ((char *) ufs_dev + 100);
-    if (write_fn < 0x80000000u || write_fn >= 0x82000000u) {
+    if (!ufs_ext_write && (write_fn < 0x80000000u || write_fn >= 0x82000000u)) {
         printf("usbfat: U-Boot has no USB write (0x%08x)\n", write_fn);
         return -1;
     }
@@ -790,20 +881,7 @@ static int ufs_overwrite(const char *path, const void *data, const char *magic) 
         return -1;
     }
     memcpy(ufs_sec, data, UFS_SECTOR);
-#ifdef __mips__
-    {
-        u32 a;
-
-        /* DMA reads RAM: write the cached copy back first */
-        for (a = (u32) ufs_sec; a < (u32) ufs_sec + UFS_SECTOR; a += 32) {
-            __asm__ volatile("cache 0x15, 0(%0)" : : "r" (a) : "memory");
-        }
-        __asm__ volatile("sync" : : : "memory");
-    }
-#endif
-    ub_target = write_fn;
-    got = ((ub_blk_write_t) (void *) ub_thunk) (*(int *) ((char *) ufs_dev + 4), sec, 1,
-                                                ufs_sec);
+    got = ufs_write_sector(sec, ufs_sec) == 0;
     memset(ufs_sec, 0, UFS_SECTOR);
     if (got != 1 || ufs_sectors(sec, 1, ufs_sec) < 0 || memcmp(ufs_sec, data, UFS_SECTOR)) {
         printf("usbfat: writing %s (sector %d) failed\n", path, sec);

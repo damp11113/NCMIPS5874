@@ -51,11 +51,17 @@
  * menu, POWER restarts. Interrupts are passed on to U-Boot's vectors, and
  * U-Boot's EBase is put back before the stock firmware is started.
  *
- * Build: LOAD=0x80800000 MAX_END=0x80a00000 sh sdk/build.sh LAUNCHER.BIN
- *        launcher/launcher.c launcher/crash_entry.S
+ * Multitasking (fifth setting, system=1, from the next start): the menu
+ * runs as a FreeRTOS task beside background music and USB hot-plug
+ * (system.c); apps get "@sys=" and run inside the menu's task. Pulling the
+ * stick then only empties the list until it is back.
+ *
+ * Build: sh launcher/build.sh (FreeRTOS from rtos/, Helix MP3 for the music)
  */
 #define BOX_WANT_AUDIO
 #include "sdk.h"
+#include "port_ctx.h"
+#include "system.h"
 
 #define APPS_DIR        "/NCAPPS/APPS"
 #define DATA_DIR        "/NCAPPS/APPSDATA"
@@ -177,6 +183,7 @@ static void ini_field(void *ctx, const char *k, const char *v) {
 /* ---- SETTINGS.TXT (see settings_save) ---- */
 
 static int set_bigmem;              /* saved setting; the running state is sdk_bigmem_bytes */
+static int set_system;              /* multitasking (system.c), from the next start */
 
 /* video= values the boot script knows (ncboot.txt); the running mode is
  * sdk_video_mode () */
@@ -206,6 +213,8 @@ static void settings_field(void *ctx, const char *k, const char *v) {
         sdk_overlay_on = atoi(v) != 0;
     } else if (!strcasecmp(k, "saver")) {
         sdk_saver_min = atoi(v);
+    } else if (!strcasecmp(k, "system")) {
+        set_system = atoi(v) != 0;
     }
 }
 
@@ -228,17 +237,19 @@ static int settings_save(void) {
                   "# saver: minutes without a key until the screen goes black, 0 never\n"
                   "saver=%d\n"
                   "# video: HDMI output 1080p60, 1080p50 or 1080i\n"
-                  "video=%s\n",
+                  "video=%s\n"
+                  "# system 1: multitasking, background music, USB hot-plug\n"
+                  "system=%d\n",
                   set_bigmem, sdk_overlay_on ? 1 : 0, (int) sdk_saver_min,
-                  video_modes[set_video]);
+                  video_modes[set_video], set_system);
     memset(buf + n, '#', sizeof(buf) - 1 - n);
     buf[sizeof(buf) - 1] = '\n';
     if (sdk_overwrite_sector_file(SETTINGS_PATH, buf, SETTINGS_MAGIC) < 0) {
         printf("launcher: settings NOT saved\n");
         return -1;
     }
-    printf("launcher: settings saved (bigmem=%d overlay=%d saver=%d video=%s)\n", set_bigmem,
-            sdk_overlay_on, (int) sdk_saver_min, video_modes[set_video]);
+    printf("launcher: settings saved (bigmem=%d overlay=%d saver=%d video=%s system=%d)\n",
+            set_bigmem, sdk_overlay_on, (int) sdk_saver_min, video_modes[set_video], set_system);
     return 0;
 }
 
@@ -395,10 +406,21 @@ static void draw_icon(const struct entry *e, int x, int y) {
     }
 }
 
+/* Background music state, top right (system on) */
+static void draw_music(int force) {
+    char line[96];
+
+    if (system_music_line(line, sizeof(line)) || force) {
+        fb_rect(&fb, 520, 30, fb.w - 520 - 20, 40, PANEL);
+        fb_text(&fb, 540, 44, line, 2, line[0] == '>' ? GREEN : GREY, TRANSPARENT);
+    }
+}
+
 static void draw_header(void) {
     fb_rect(&fb, 0, 0, fb.w, 100, PANEL);
     fb_text(&fb, LIST_X, 30, "NCAPPS", 3, WHITE, TRANSPARENT);
     fb_text(&fb, LIST_X + 170, 44, "app launcher", 2, GREY, TRANSPARENT);
+    draw_music(1);
     fb_rect(&fb, 0, 660, fb.w, 60, PANEL);
     fb_text(&fb, LIST_X, 680, "OK start  UP/DOWN select  SETTINGS about  EXIT firmware  POWER off",
              2, GREY, TRANSPARENT);
@@ -408,6 +430,11 @@ static void draw_list(void) {
     int i;
 
     fb_rect(&fb, LIST_X - 10, LIST_Y - 10, LIST_W + 20, ROWS * ROW_H + 20, BG);
+    if (!sdk_storage_present()) {
+        fb_text(&fb, LIST_X, LIST_Y, "USB stick removed", 2, YELLOW, TRANSPARENT);
+        fb_text(&fb, LIST_X, LIST_Y + 40, "Put it back in", 2, GREY, TRANSPARENT);
+        return;
+    }
     if (count == 0) {
         fb_text(&fb, LIST_X, LIST_Y, "No apps in /NCAPPS/APPS", 2, YELLOW, TRANSPARENT);
         return;
@@ -481,7 +508,8 @@ extern char crash_stub_refill[], crash_stub_refill_end[];
 extern char crash_stub_general[], crash_stub_general_end[];
 static u32 vec_page[1024] __attribute__((aligned(4096)));     /* our EBase */
 u32 uboot_ebase;                    /* U-Boot's vectors: interrupts go there */
-static u32 uboot_status, gd_value;
+static u32 uboot_status;
+u32 gd_value;                       /* U-Boot's $k0 (crash_entry.S uses it too) */
 static void *launch_jb[5];
 static volatile int in_app, in_crash;
 static struct frame crash;
@@ -644,7 +672,44 @@ static void crash_uninstall(void) {
     mtc0(12, 0, uboot_status);
 }
 
-static void crash_resume(void);
+void crash_resume(void);
+extern char crash_rtos_tramp[];
+
+/*
+ * Under the system (system.c): an exception in the UI task, i.e. the
+ * launcher or an app. ctx = the task's saved registers; the task resumes in
+ * crash_rtos_tramp (crash_entry.S: crash stack, $k0 = gd), which shows the
+ * crash screen like crash_handler's path does.
+ */
+void launcher_rtos_crash(uint32_t *ctx, uint32_t cause, uint32_t badvaddr) {
+    struct frame f;
+    int i;
+
+    if (in_crash) {
+        printf("\nlauncher: exception while showing a crash (%s at 0x%08x), halted\n",
+                exc_name((cause >> 2) & 31), (unsigned) ctx[CTX_EPC / 4]);
+        for (;;) {
+        }
+    }
+    memset(&f, 0, sizeof(f));
+    for (i = 1; i <= 25; i++) {             /* at, v0-v1, a0-a3, t0-t7, s0-s7, t8, t9 */
+        f.r[i] = ctx[i - 1];
+    }
+    f.r[26] = gd_value;
+    f.r[28] = ctx[CTX_GP / 4];
+    f.r[29] = (u32) ctx + CTX_BYTES;
+    f.r[30] = ctx[CTX_FP / 4];
+    f.r[31] = ctx[CTX_RA / 4];
+    f.hi = ctx[CTX_HI / 4];
+    f.lo = ctx[CTX_LO / 4];
+    f.epc = ctx[CTX_EPC / 4];
+    f.status = ctx[CTX_STATUS / 4];
+    f.cause = cause;
+    f.badvaddr = badvaddr;
+    in_crash = 1;
+    crash = f;
+    ctx[CTX_EPC / 4] = (u32) crash_rtos_tramp;
+}
 
 /* Exception context (EXL = 1): keep a copy, continue in crash_resume () */
 void crash_handler(struct frame *f) {
@@ -677,7 +742,7 @@ static void crash_line(int x, int y, u16 color, const char *fmt, ...) {
     }
 }
 
-static void crash_resume(void) {
+void crash_resume(void) {
     static const char *rn[32] = {
         "zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3", "t4", "t5",
         "t6", "t7", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9", "k0", "k1",
@@ -765,7 +830,7 @@ static char *strtok_simple(char *s) {
 
 static int launch(const struct entry *e) {
     static char app_arg[SDK_PATH_MAX + 8], data_arg[SDK_PATH_MAX + 8], args[160];
-    static char saver_arg[16];
+    static char saver_arg[16], sys_arg[24];
     static char *argv[24];                          /* static: survive the longjmp */
     static int rc;
     char path[SDK_PATH_MAX];
@@ -806,6 +871,10 @@ static int launch(const struct entry *e) {
         argv[argc++] = sdk_overlay_on ? "@ovl=1" : "@ovl=0";
         snprintf(saver_arg, sizeof(saver_arg), "@saver=%d", (int) sdk_saver_min);
         argv[argc++] = saver_arg;
+        if (system_running()) {
+            system_app_arg(sys_arg, sizeof(sys_arg));
+            argv[argc++] = sys_arg;
+        }
     }
     set_field(args, sizeof(args), e->args);
     for (p = strtok_simple(args); p && argc < 23; p = strtok_simple(0)) {
@@ -815,10 +884,16 @@ static int launch(const struct entry *e) {
 
     snprintf(crash_app, sizeof(crash_app), "%s", e->name);
     in_app = 1;
+    if (e->uboot_abi) {
+        system_legacy_begin();                     /* it runs alone, as before */
+    }
     if (__builtin_setjmp(launch_jb) == 0) {
         rc = ((app_entry_t) SDK_APP_ADDR) (argc, argv);
     } else {
         rc = -1;                                    /* crashed: see crash_resume () */
+    }
+    if (e->uboot_abi) {
+        system_legacy_end();
     }
     in_app = 0;
 
@@ -834,7 +909,7 @@ static int launch(const struct entry *e) {
 extern size_t heap_total;
 
 static void about(void) {
-    static const char *help[4][2] = {
+    static const char *help[5][2] = {
         { "CPU / memory / USB / audio bar at the top of the screen.",
           "MUTE on the remote switches it in any app." },
         { "Gives the AV core 8 MB video memory instead of 50: much more",
@@ -843,14 +918,16 @@ static void about(void) {
           "music keeps playing). Protects the TV from image retention." },
         { "HDMI output mode, used from the next start. 1080p is sharp and",
           "steady; 1080i (U-Boot's default) flickers on thin lines." },
+        { "FreeRTOS: music from /MUSIC in the background (PLAY PAUSE STOP",
+          "NEXT anywhere), pull / put back the stick. From the next start." },
     };
     static const u32 saver_steps[] = { 1, 5, 10, 30, 0 };
     /* Items shown: the satellite box has no big memory mode (its AV core
      * already leaves the upper 64 MB free); bigmem stays in SETTINGS.TXT
      * untouched for the IPTV box sharing the stick. */
-    static const int items_iptv[] = { 0, 1, 2, 3 }, items_sat[] = { 0, 2, 3 };
+    static const int items_iptv[] = { 0, 1, 2, 3, 4 }, items_sat[] = { 0, 2, 3, 4 };
     const int *items = sdk_box_sat ? items_sat : items_iptv;
-    int nitems = sdk_box_sat ? 3 : 4;
+    int nitems = sdk_box_sat ? 4 : 5;
     int video_now = video_index(sdk_video_mode());
     struct sdk_key k;
     int redraw = 1, item = 0, i;
@@ -860,7 +937,8 @@ static void about(void) {
     sdk_panel_show("SEt");
     for (;;) {
         int big_now = sdk_bigmem_bytes != 0;
-        int restart = (!sdk_box_sat && set_bigmem != big_now) || set_video != video_now;
+        int restart = (!sdk_box_sat && set_bigmem != big_now) || set_video != video_now ||
+                      set_system != system_running();
 
         if (redraw) {
             char line[96];
@@ -880,10 +958,10 @@ static void about(void) {
             fb_text(&fb, LIST_X, 320, "Made by damp11113", 3, YELLOW, TRANSPARENT);
             fb_text(&fb, LIST_X, 370, "github.com/damp11113/NCMIPS5874", 3, CYAN, TRANSPARENT);
             snprintf(line, sizeof(line), "%d app entries    built %s", count, __DATE__);
-            fb_text(&fb, LIST_X, 420, line, 2, GREY, TRANSPARENT);
+            fb_text(&fb, LIST_X + 440, 334, line, 2, GREY, TRANSPARENT);
 
             for (i = 0; i < nitems; i++) {
-                int y = 454 + i * 32;
+                int y = 454 - (nitems - 4) * 32 + i * 32;
 
                 if (i == item) {
                     fb_rect(&fb, LIST_X - 10, y - 6, 1000, 36, HILITE);
@@ -902,6 +980,10 @@ static void about(void) {
                     snprintf(line, sizeof(line), "Video output:         %s  %s",
                               video_modes[set_video],
                               set_video == video_now ? "" : "(after restart)");
+                } else if (items[i] == 4) {
+                    snprintf(line, sizeof(line), "Multitasking:         %s  %s",
+                              set_system ? "ON " : "OFF",
+                              set_system == system_running() ? "" : "(after restart)");
                 } else if (set_bigmem == big_now) {
                     snprintf(line, sizeof(line), "Big memory:           %s  (heap %d MB)",
                               set_bigmem ? "ON " : "OFF", (int) (heap_total >> 20));
@@ -940,6 +1022,8 @@ static void about(void) {
                 set_bigmem = !set_bigmem;
             } else if (items[item] == 3) {
                 set_video = (set_video + 1) % 3;
+            } else if (items[item] == 4) {
+                set_system = !set_system;
             } else {
                 for (i = 0; i < 4 && saver_steps[i] != sdk_saver_min; i++) {
                 }
@@ -976,6 +1060,7 @@ static void standby(void) {
     int i;
 
     printf("launcher: standby (POWER or STANDBY to wake)\n");
+    system_music_stop();
     sdk_saver_min = 0;                      /* POWER must not only wake a screen saver */
     message("Power off...", WHITE);
     sdk_panel_show("");
@@ -1041,9 +1126,10 @@ static int countdown(int idx) {
     return 1;
 }
 
+static int ui_loop(void);
+
 int main(int argc, char *argv[]) {
-    struct sdk_key k;
-    int redraw = 1, panel_sel = -1;
+    int rc;
 
     (void) argc;
     (void) argv;
@@ -1074,6 +1160,23 @@ int main(int argc, char *argv[]) {
     read_kv(SETTINGS_PATH, settings_field, 0);
     scan();
     splash_on = 0;
+    if (set_system) {
+        splash_status("Starting the system...");
+        rc = system_run(ui_loop);
+        if (rc >= 0) {
+            crash_uninstall();                     /* scheduler stopped: U-Boot's vectors */
+            return rc;
+        }
+    }
+    return ui_loop();
+}
+
+/* The menu: plain, or as the system's UI task */
+static int ui_loop(void) {
+    struct sdk_key k;
+    int redraw = 1, panel_sel = -1;
+    u32 seen_gen = sdk_storage_gen(), music_ms = 0;
+
     draw_all();
 
     if (autostart[0]) {
@@ -1092,6 +1195,20 @@ int main(int argc, char *argv[]) {
     }
 
     for (;;) {
+        if (sdk_storage_gen() != seen_gen) {   /* stick pulled out / put back */
+            seen_gen = sdk_storage_gen();
+            if (sdk_storage_present()) {
+                scan();
+            } else {
+                count = 0;
+            }
+            sel = top = 0;
+            redraw = 1;
+        }
+        if (system_running() && ub_get_timer(music_ms) >= 500) {
+            music_ms = ub_get_timer(0);
+            draw_music(0);
+        }
         if (redraw) {
             if (sel < top) {
                 top = sel;
@@ -1163,7 +1280,9 @@ int main(int argc, char *argv[]) {
             message("Booting the stock firmware...", WHITE);
             sdk_panel_show("");
             fb_clear(&fb, TRANSPARENT);
-            crash_uninstall();                     /* U-Boot's vectors for the firmware */
+            if (!system_running()) {
+                crash_uninstall();                 /* U-Boot's vectors for the firmware */
+            }
             return 0;
         }
     }

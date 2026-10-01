@@ -235,6 +235,7 @@ addresses) in `continue.md`.
 | `iptv/hooks/` (`hook*.c`, `hookpatch.c`, `fwpatch.c`, `usbfast.c`), `buildhook.sh` | run code inside the stock firmware |
 | `regwatch.c`, `regdump.c`, `snap*.c`, `regapply.c`, `vicset.c`, `vsyncprobe.c`, `irscan.c` | hardware exploration tools |
 | `xref.py`, `ubxref.py`, `accessors.py`, `diffsnap.py` | firmware / U-Boot analysis scripts |
+| `rtos/`, `apps/rtostest/` | FreeRTOS on the boxes: our MIPS 24KEc port, QEMU test, box test app |
 | `bench/` | dspbench: SF2 / OPL / MP3 / DOOM hot loops, plain vs `-mdsp`, checked against the committed code |
 | `sdk/brimod.h`, `sdk/brimod.c`, `esp32c3/bridge/bridge.ino`, `apps/brimod/` | BriMod: ESP32-C3 bridge on the satellite box's front I2C bus (panel, front buttons as IR frames, clock, climate, FM + RDS, WiFi), its SDK driver and settings app |
 | `iptv/firmware/` (`backup.bin`, `app_ram.bin`, `uboot_part.bin`, `avcpu.bin`) | flash dump and extracted images |

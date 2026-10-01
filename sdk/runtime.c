@@ -31,6 +31,19 @@ int main(int argc, char *argv[]);
 
 char sdk_app_dir[SDK_PATH_MAX];
 char sdk_data_dir[SDK_PATH_MAX];
+
+/* NCAPPS system (sdk/sys.h): set from "@sys=" when the launcher runs it */
+const struct sdk_sys *sdk_sys;
+
+/* Hooks for the launcher when it hosts the system (launcher/system.c):
+ * idle by sleeping a task, CPU load from the RTOS idle task, keys through
+ * the system's media-key filter, USB pulled out / put back handled by its
+ * poller (sdk_hotplug = 1) instead of the "USB stick removed" screen */
+void (*sdk_idle_hook)(u32 us);
+u32 (*sdk_idle_source)(void);
+int (*sdk_key_source)(struct sdk_key *k);
+int sdk_hotplug;
+static int audio_claimed;
 void(*sdk_load_progress) (u32 done, u32 total);
 
 static void *exit_buf[5];
@@ -145,6 +158,19 @@ int _start(int argc, char *argv[]) {
             sdk_saver_min = atoi(argv[i] + 7);
             i++;
         }
+        if (i < argc && !strncmp(argv[i], "@sys=", 5)) {
+            const struct sdk_sys *sys = (const struct sdk_sys *) strtoul(argv[i] + 5, 0, 16);
+
+            if (sys && sys->magic == SDK_SYS_MAGIC && sys->version >= 1) {
+                sdk_sys = sys;
+                ufs_ext_read = sys->raw_read;
+                ufs_ext_write = sys->raw_write;
+                sdk_idle_hook = sys->idle;
+                sdk_idle_source = sys->idle_ticks;
+                sdk_key_source = sys->key_read;
+            }
+            i++;
+        }
     }
     for (; i < argc && n < 31; i++) {
         args[n++] = argv[i];
@@ -155,6 +181,9 @@ int _start(int argc, char *argv[]) {
         exit_code = main(n, args);
     }
     run_atexit();
+    if (audio_claimed && sdk_sys) {
+        sdk_sys->audio_release();           /* background music may go on */
+    }
     return exit_code;
 }
 
@@ -216,23 +245,145 @@ static void usb_lost(void) {
     }
 }
 
-/* After any USB access: stop here if the stick is gone */
+static u32 mounted_gen;
+static u32 storage_gen = 1;             /* host: bumped on every pull / put back */
+static int stick_ok = -1;               /* host with sdk_hotplug: 1 mounted, 0 gone */
+
+/* Pulling the stick is survivable: the system (or our own poller) brings
+ * it back, files just fail meanwhile */
+static int soft_lost(void) {
+    return sdk_sys || sdk_hotplug;
+}
+
+/* After any USB access: stop here if the stick is gone (no system) */
 static inline void lost_check(void) {
     if (ufs_lost) {
+        if (soft_lost()) {
+            mounted = 0;
+            return;
+        }
         usb_lost();
     }
 }
 
+u32 sdk_storage_gen(void) {
+    return sdk_sys ? sdk_sys->storage_gen() : storage_gen;
+}
+
+int sdk_storage_present(void) {
+    if (sdk_sys) {
+        return sdk_sys->storage_present();
+    }
+    return !sdk_hotplug || stick_ok != 0;
+}
+
 static int mount(void) {
-    lost_check();
+    if (soft_lost()) {
+        if (mounted && mounted_gen != sdk_storage_gen()) {
+            mounted = 0;                    /* another stick (or the same, put back) */
+        }
+        if (!mounted) {
+            if (!sdk_storage_present()) {
+                return -1;
+            }
+            ufs_lost = 0;
+            ufs_fat_cached = 0xffffffffu;
+        }
+    } else {
+        lost_check();
+    }
     if (!mounted) {
         if (ufs_mount() < 0) {
             lost_check();
             return -1;
         }
         mounted = 1;
+        mounted_gen = sdk_storage_gen();
     }
     return 0;
+}
+
+/* Locking for the launcher's tasks (weak no-ops elsewhere) */
+__attribute__((weak)) void sdk_usb_lock(void) {
+}
+
+__attribute__((weak)) void sdk_usb_unlock(void) {
+}
+
+/*
+ * Hot-plug for the host (the launcher's USB task, a few times a second):
+ * notices the stick going and coming back, re-initialises USB and mounts
+ * it. Returns 1 when something changed (sdk_storage_gen () too).
+ */
+int sdk_storage_poll(void) {
+    static u32 since;
+    int now = ufs_stick_present(), r;
+
+    if (stick_ok < 0) {
+        stick_ok = now && mounted && !ufs_lost;
+    }
+    if (stick_ok && (!now || ufs_lost)) {
+        sdk_usb_lock();
+        ufs_lost = 1;
+        mounted = 0;
+        sdk_usb_unlock();
+        stick_ok = 0;
+        storage_gen++;
+        since = 0;
+        printf("sdk: USB stick removed\n");
+        return 1;
+    }
+    if (stick_ok || !now) {
+        since = 0;
+        return 0;
+    }
+    if (!since) {
+        since = ub_get_timer(0) | 1;        /* let it settle first */
+        return 0;
+    }
+    if (ub_get_timer(since) < 800) {
+        return 0;
+    }
+    printf("sdk: USB stick inserted, starting it\n");
+    sdk_usb_lock();
+    r = ufs_remount();
+    if (r == 0) {
+        mounted = 1;
+        mounted_gen = ++storage_gen;
+    }
+    sdk_usb_unlock();
+    if (r < 0) {
+        since = ub_get_timer(0) | 1;        /* try again in a moment */
+        return 0;
+    }
+    stick_ok = 1;
+    since = 0;
+    return 1;
+}
+
+/* Whole sectors for apps under the system (sdk_sys->raw_read / raw_write) */
+int sdk_raw_read(u32 start, u32 count, void *buf) {
+    int r = -1;
+
+    sdk_usb_lock();
+    if (mount() == 0) {
+        r = ufs_sectors(start, count, buf);
+        lost_check();
+    }
+    sdk_usb_unlock();
+    return r;
+}
+
+int sdk_raw_write(u32 sector, const void *buf) {
+    int r = -1;
+
+    sdk_usb_lock();
+    if (mount() == 0) {
+        r = ufs_write_sector(sector, buf);
+        lost_check();
+    }
+    sdk_usb_unlock();
+    return r;
 }
 
 /* Full path on the stick for an app path */
@@ -244,7 +395,7 @@ void sdk_resolve(const char *path, char *out) {
     }
 }
 
-long sdk_file_size(const char *path) {
+static long sdk_file_size_u(const char *path) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
 
@@ -260,7 +411,7 @@ long sdk_file_size(const char *path) {
 }
 
 /* Read up to max bytes of a file to dst. Returns the size read, or -1. */
-long sdk_read_file(const char *path, void *dst, long max) {
+static long sdk_read_file_u(const char *path, void *dst, long max) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
     u32 done = 0, total;
@@ -290,7 +441,7 @@ long sdk_read_file(const char *path, void *dst, long max) {
 }
 
 /* Whole file into malloc'd memory (for fopen). Returns 0, or -1. */
-int sdk_load_file(const char *path, unsigned char **data, long *size) {
+static int sdk_load_file_u(const char *path, unsigned char **data, long *size) {
     static struct ufile f;
     char full[SDK_PATH_MAX];
     unsigned char *buf;
@@ -335,7 +486,7 @@ u32 sdk_usb_bytes(void) {
 }
 
 /* Replace a 512-byte settings file in place (see ufs_overwrite). 0 = ok. */
-int sdk_overwrite_sector_file(const char *path, const void *data, const char *magic) {
+static int sdk_overwrite_sector_file_u(const char *path, const void *data, const char *magic) {
     char full[SDK_PATH_MAX];
     int rc;
 
@@ -346,6 +497,42 @@ int sdk_overwrite_sector_file(const char *path, const void *data, const char *ma
     rc = ufs_overwrite(full, data, magic);
     lost_check();
     return rc;
+}
+
+long sdk_file_size(const char *path) {
+    long r;
+
+    sdk_usb_lock();
+    r = sdk_file_size_u(path);
+    sdk_usb_unlock();
+    return r;
+}
+
+long sdk_read_file(const char *path, void *dst, long max) {
+    long r;
+
+    sdk_usb_lock();
+    r = sdk_read_file_u(path, dst, max);
+    sdk_usb_unlock();
+    return r;
+}
+
+int sdk_load_file(const char *path, unsigned char **data, long *size) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_load_file_u(path, data, size);
+    sdk_usb_unlock();
+    return r;
+}
+
+int sdk_overwrite_sector_file(const char *path, const void *data, const char *magic) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_overwrite_sector_file_u(path, data, magic);
+    sdk_usb_unlock();
+    return r;
 }
 
 /* ---- app config (APPSDATA/<app>/CONFIG.TXT, see sdk.h) ---- */
@@ -458,11 +645,15 @@ int sdk_config_save(void) {
 
 /* ---- streamed files (songs, big data: read in pieces, seek) ---- */
 
-#define MAX_STREAMS 3
+#ifndef SDK_MAX_STREAMS
+#define SDK_MAX_STREAMS 3
+#endif
+#define MAX_STREAMS SDK_MAX_STREAMS
 static struct ufile streams[MAX_STREAMS];
 static int stream_used[MAX_STREAMS];
+static u32 stream_gen[MAX_STREAMS];         /* stick it was opened on */
 
-int sdk_open(const char *path) {
+static int sdk_open_u(const char *path) {
     char full[SDK_PATH_MAX];
     int h;
 
@@ -480,18 +671,40 @@ int sdk_open(const char *path) {
         return -1;
     }
     stream_used[h] = 1;
+    stream_gen[h] = mounted_gen;
     return h;
 }
 
-long sdk_read(int h, void *dst, long len) {
+int sdk_open(const char *path) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_open_u(path);
+    sdk_usb_unlock();
+    return r;
+}
+
+static long sdk_read_u(int h, void *dst, long len) {
     long n;
 
     if (h < 0 || h >= MAX_STREAMS || !stream_used[h] || len <= 0) {
         return 0;
     }
+    if (mount() < 0 || stream_gen[h] != mounted_gen) {
+        return 0;                           /* the stick it was on is gone */
+    }
     n = ufs_read(&streams[h], dst, len);
     lost_check();
     return n;
+}
+
+long sdk_read(int h, void *dst, long len) {
+    long r;
+
+    sdk_usb_lock();
+    r = sdk_read_u(h, dst, len);
+    sdk_usb_unlock();
+    return r;
 }
 
 void sdk_seek(int h, u32 pos) {
@@ -519,7 +732,7 @@ u32 sdk_usb_ticks(void) {
 }
 
 /* USB stick details (for info screens). Returns 0, or -1. */
-int sdk_storage_info(struct sdk_storage *st) {
+static int sdk_storage_info_u(struct sdk_storage *st) {
     const char *d;
 
     if (mount() < 0) {
@@ -539,13 +752,26 @@ int sdk_storage_info(struct sdk_storage *st) {
     return 0;
 }
 
+int sdk_storage_info(struct sdk_storage *st) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_storage_info_u(st);
+    sdk_usb_unlock();
+    return r;
+}
+
 /* ---- folders ---- */
 
-#define MAX_DIRS 4
+#ifndef SDK_MAX_DIRS
+#define SDK_MAX_DIRS 4
+#endif
+#define MAX_DIRS SDK_MAX_DIRS
 static struct udir dirs[MAX_DIRS];
 static int dir_used[MAX_DIRS];
+static u32 dir_gen[MAX_DIRS];
 
-int sdk_dir_open(const char *path) {
+static int sdk_dir_open_u(const char *path) {
     char full[SDK_PATH_MAX];
     int h;
 
@@ -563,13 +789,24 @@ int sdk_dir_open(const char *path) {
         return -1;
     }
     dir_used[h] = 1;
+    dir_gen[h] = mounted_gen;
     return h;
 }
 
-int sdk_dir_read(int h, struct sdk_dirent *e) {
+int sdk_dir_open(const char *path) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_dir_open_u(path);
+    sdk_usb_unlock();
+    return r;
+}
+
+static int sdk_dir_read_u(int h, struct sdk_dirent *e) {
     struct udirent u;
 
-    if (h < 0 || h >= MAX_DIRS || !dir_used[h] || !ufs_readdir(&dirs[h], &u)) {
+    if (h < 0 || h >= MAX_DIRS || !dir_used[h] || mount() < 0 || dir_gen[h] != mounted_gen ||
+        !ufs_readdir(&dirs[h], &u)) {
         lost_check();
         return 0;
     }
@@ -577,6 +814,15 @@ int sdk_dir_read(int h, struct sdk_dirent *e) {
     e->is_dir = u.is_dir;
     e->size = u.size;
     return 1;
+}
+
+int sdk_dir_read(int h, struct sdk_dirent *e) {
+    int r;
+
+    sdk_usb_lock();
+    r = sdk_dir_read_u(h, e);
+    sdk_usb_unlock();
+    return r;
 }
 
 void sdk_dir_close(int h) {
@@ -641,6 +887,104 @@ void sdk_cache_sync(u32 start, u32 len) {
             : : "r" (a) : "memory");
     }
     __asm__ volatile("sync" : : : "memory");
+}
+
+/* ---- U-Boot's clock under FreeRTOS ----
+ *
+ * U-Boot 2012.04's get_timer () keeps its milliseconds in CP0 Compare: it
+ * moves Compare past Count one jiffy (1 ms) at a time and counts them in
+ * a static. A FreeRTOS tick lives in Compare too and keeps it ahead of
+ * Count, so get_timer would stand still, and a get_timer interrupted by
+ * the tick writes an old Compare back (no tick until Count wraps, 13 s).
+ * While a scheduler runs, the first words of U-Boot's get_timer jump to
+ * tm_get_timer: milliseconds from Count, interrupts off. Same code on both
+ * boxes (checked word by word before patching):
+ *
+ *   lui gp / addiu gp / addu gp,gp,t9 / mfc0 a3,Compare / mfc0 v1,Count /
+ *   lw v0,GOT(gp) / subu / lw a1,timestamp(v0) / ... / jiffy in +40, +48
+ */
+static u32 *tm_code, tm_saved[4], *tm_stamp, tm_jiffy, tm_ms, tm_count;
+
+static inline u32 tm_cp0_count(void) {
+    u32 v;
+
+    __asm__ volatile("mfc0 %0, $9" : "=r" (v));
+    return v;
+}
+
+/* Interrupts off */
+static u32 tm_now(void) {
+    u32 n = (tm_cp0_count() - tm_count) / tm_jiffy;
+
+    tm_ms += n;
+    tm_count += n * tm_jiffy;
+    return tm_ms;
+}
+
+static unsigned long tm_get_timer(unsigned long base) {
+    u32 st, ms;
+
+    __asm__ volatile("di %0\n\tehb" : "=r" (st) : : "memory");
+    ms = tm_now();
+    if (st & 1) {
+        __asm__ volatile("ei\n\tehb" : : : "memory");
+    }
+    return ms - base;
+}
+
+int sdk_timer_own(void) {
+    u32 *gd, *p, gp, fn = (u32) tm_get_timer;
+
+    if (tm_code) {
+        return 0;
+    }
+    __asm__ volatile("move %0, $26" : "=r" (gd));
+    p = (u32 *) ((u32 *) gd[0x20 / 4])[11];         /* jt[XF_get_timer] */
+    if (p[0] >> 16 != 0x3c1c || p[1] >> 16 != 0x279c || p[2] != 0x0399e021 ||
+        p[3] != 0x40075800 || p[4] != 0x40034800 || p[5] >> 16 != 0x8f82 ||
+        p[7] >> 16 != 0x8c45 || p[10] >> 16 != 0x3c02 || p[12] >> 16 != 0x3448) {
+        printf("sdk: U-Boot get_timer not recognised\n");
+        return -1;
+    }
+    gp = (p[0] << 16) + (u32) (short) p[1] + (u32) p;
+    tm_stamp = (u32 *) (*(u32 *) (gp + (u32) (short) p[5]) + (u32) (short) p[7]);
+    tm_jiffy = (p[10] & 0xffff) << 16 | (p[12] & 0xffff);
+    tm_ms = ub_get_timer(0);                        /* U-Boot's own, up to date */
+    __asm__ volatile("mfc0 %0, $11" : "=r" (tm_count));     /* its next jiffy */
+    tm_count -= tm_jiffy;
+    memcpy(tm_saved, p, sizeof(tm_saved));
+    p[0] = 0x3c190000 | fn >> 16;                   /* lui t9, hi */
+    p[1] = 0x37390000 | (fn & 0xffff);              /* ori t9, t9, lo */
+    p[2] = 0x03200008;                              /* jr t9 */
+    p[3] = 0;
+    tm_code = p;
+    sdk_cache_sync((u32) p, sizeof(tm_saved));
+    return 0;
+}
+
+/* From the FreeRTOS tick hook: keeps the count going if nobody asks */
+void sdk_timer_tick(void) {
+    if (tm_code) {
+        tm_now();
+    }
+}
+
+/* U-Boot's get_timer back, carrying on from our milliseconds */
+void sdk_timer_release(void) {
+    u32 st;
+
+    if (!tm_code) {
+        return;
+    }
+    __asm__ volatile("di %0\n\tehb" : "=r" (st) : : "memory");
+    *tm_stamp = tm_now();
+    __asm__ volatile("mtc0 %0, $11\n\tehb" : : "r" (tm_count + tm_jiffy) : "memory");
+    memcpy(tm_code, tm_saved, sizeof(tm_saved));
+    sdk_cache_sync((u32) tm_code, sizeof(tm_saved));
+    tm_code = 0;
+    if (st & 1) {
+        __asm__ volatile("ei\n\tehb" : : : "memory");
+    }
 }
 
 /* ---- input: remote + serial as buttons ---- */
@@ -728,6 +1072,17 @@ static int saver_key(int repeat) {
     return 0;
 }
 
+/* ---- audio output: apps claim it, background music pauses ---- */
+
+void sdk_audio_claim(void) {
+    if (!audio_claimed) {
+        audio_claimed = 1;
+        if (sdk_sys) {
+            sdk_sys->audio_claim();
+        }
+    }
+}
+
 /* ---- idle time + performance overlay ---- */
 
 int sdk_overlay_on;
@@ -743,6 +1098,11 @@ static inline u32 cp0_count(void) {
 void sdk_idle(u32 us) {
     u32 t0 = cp0_count();
 
+    if (sdk_idle_hook) {                    /* other tasks run meanwhile */
+        sdk_idle_hook(us);
+        sdk_overlay_tick();
+        return;
+    }
     ub_udelay(us);
     idle_ticks += cp0_count() - t0;
     sdk_overlay_tick();
@@ -791,14 +1151,14 @@ void sdk_overlay_tick(void) {
         was_on = 0;
         return;
     }
-    idle = idle_ticks - last_idle;
+    idle = (sdk_idle_source ? sdk_idle_source() : idle_ticks) - last_idle;
     usb = ufs_bytes - last_usb;
     cpu = wall ? 100 - (int) ((unsigned long long) idle * 100 / wall) : 0;
     cpu = cpu < 0 ? 0 : cpu;
     heap_kb = heap_in_use / 1024;
     mem = heap_total ? (int) ((unsigned long long) heap_in_use * 100 / heap_total) : 0;
     last = now;
-    last_idle = idle_ticks;
+    last_idle = sdk_idle_source ? sdk_idle_source() : idle_ticks;
     last_usb = ufs_bytes;
     was_on = 1;
 
@@ -974,11 +1334,12 @@ static int fp_poll(int *btn, int *repeat) {
     return 0;
 }
 
-int sdk_key_poll(struct sdk_key *k) {
+/* Hardware keys: remote, front buttons (or BriMod), serial. 1 = got one.
+ * No screen saver or MUTE handling here (sdk_key_poll does that), so the
+ * system can hand these to apps (sdk_sys->key_read). */
+int sdk_key_read(struct sdk_key *k) {
     struct ir_event ev;
     int ir;
-
-    sdk_overlay_tick();
 
     if (!input_ready) {
         ir_init();
@@ -993,9 +1354,6 @@ int sdk_key_poll(struct sdk_key *k) {
     if (ir && ev.user == IR_USER_STOCK) {
         unsigned int i;
 
-        if (saver_key(ev.repeat)) {
-            return 0;
-        }
         for (i = 0; i < sizeof(ir_btn) / sizeof(ir_btn[0]); i++) {
             if (ir_btn[i].ir == ev.key) {
                 u32 now = ub_get_timer(0);
@@ -1004,13 +1362,6 @@ int sdk_key_poll(struct sdk_key *k) {
                     press_ms = now;
                 } else if (now - press_ms < KEY_REPEAT_DELAY_MS) {
                     return 0;               /* the repeat right after a tap */
-                }
-                if (ir_btn[i].btn == BTN_MUTE) {
-                    if (!ev.repeat) {
-                        sdk_overlay_on = !sdk_overlay_on;    /* MUTE: overlay on / off */
-                        sdk_overlay_tick();
-                    }
-                    return 0;
                 }
                 k->btn = ir_btn[i].btn;
                 k->repeat = ev.repeat;
@@ -1025,9 +1376,6 @@ int sdk_key_poll(struct sdk_key *k) {
 
         /* front buttons come as the bridge's IR frames, no panel polling */
         if (ir && brimod_ir_key(&ev, &btn, &rep)) {
-            if (saver_key(rep)) {
-                return 0;
-            }
             k->btn = btn;
             k->repeat = rep;
             k->remote = 1;
@@ -1037,9 +1385,6 @@ int sdk_key_poll(struct sdk_key *k) {
         int btn, rep;
 
         if (fp_poll(&btn, &rep)) {
-            if (saver_key(rep)) {
-                return 0;
-            }
             k->btn = btn;
             k->repeat = rep;
             k->remote = 1;
@@ -1049,9 +1394,6 @@ int sdk_key_poll(struct sdk_key *k) {
     if (ub_tstc()) {
         int c = ub_getc();
 
-        if (saver_key(0)) {
-            return 0;
-        }
         k->ch = c;
         if (c == 27) {                  /* ESC [ A-D = arrows, ESC alone = back */
             u32 t = ub_get_timer(0);
@@ -1088,6 +1430,26 @@ int sdk_key_poll(struct sdk_key *k) {
         return 1;
     }
     return 0;
+}
+
+/* Keys for the app: the screen saver eats the waking key, MUTE on the
+ * remote toggles the performance overlay */
+int sdk_key_poll(struct sdk_key *k) {
+    sdk_overlay_tick();
+    if (!(sdk_key_source ? sdk_key_source(k) : sdk_key_read(k))) {
+        return 0;
+    }
+    if (saver_key(k->repeat)) {
+        return 0;
+    }
+    if (k->btn == BTN_MUTE && k->remote) {
+        if (!k->repeat) {
+            sdk_overlay_on = !sdk_overlay_on;
+            sdk_overlay_tick();
+        }
+        return 0;
+    }
+    return 1;
 }
 
 const char *sdk_btn_name(int btn) {

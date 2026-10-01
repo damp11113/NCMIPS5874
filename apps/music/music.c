@@ -835,8 +835,9 @@ static void draw_player(int idx) {
     text(x, 290, line, 2, WHITE, TRANSPARENT, 50);
     fb_rect(&fb, 0, 640, fb.w, 80, PANEL);
     fb_text(&fb, 40, 650, "OK pause  UP/DOWN prev/next  LEFT/RIGHT volume", 2, GREY, TRANSPARENT);
-    fb_text(&fb, 40, 684, "RED/GREEN seek (hold = faster)  BACK list  HOME quit", 2, GREY,
-             TRANSPARENT);
+    fb_text(&fb, 40, 684, sdk_sys && sdk_sys->version >= 2 ?
+             "RED/GREEN seek (hold = faster)  BACK list  HOME quit, MP3 keeps playing" :
+             "RED/GREEN seek (hold = faster)  BACK list  HOME quit", 2, GREY, TRANSPARENT);
 }
 
 static void draw_meter(int y, int peak) {
@@ -901,6 +902,24 @@ static void led_update(void) {
     sdk_panel_led(paused || out_frames % AUD_RATE < AUD_RATE / 2);
 }
 
+/* HOME with Multitasking on: the launcher's background player carries on
+ * with this song where it is (MP3 only, not when paused), then the rest
+ * of the folder */
+static void hand_off(void) {
+    u32 ms = (u32) ((unsigned long long) out_frames * 1000 / AUD_RATE), off = 0;
+
+    if (!sdk_sys || sdk_sys->version < 2 || !song.is_mp3 || !playing || paused) {
+        return;
+    }
+    if (song.duration_s) {
+        off = song.data_start + (u32) ((unsigned long long) (song.data_end - song.data_start) *
+                                        ms / (song.duration_s * 1000ull));
+    }
+    if (sdk_sys->music_play(song.path, off, ms, vol) == 0) {
+        printf("music: %s goes on in the background\n", song.path);
+    }
+}
+
 /* Play from items[idx] on. Returns when the user goes back to the list. */
 static void play_from(int idx) {
     struct sdk_key k;
@@ -943,6 +962,9 @@ static void play_from(int idx) {
             } else if (k.btn == BTN_STOP || k.btn == BTN_BACK) {
                 break;
             } else if (k.btn == BTN_HOME || k.btn == BTN_POWER) {
+                if (k.btn == BTN_HOME) {
+                    hand_off();
+                }
                 sdk_panel_led(0);
                 close_song();
                 audio_stop();
