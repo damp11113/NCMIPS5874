@@ -229,6 +229,17 @@ static void send_probe(void) {
     send_probe_for(ssid, ssid_len);
 }
 
+/* Deauthentication, reason 3 (leaving): clears what the AP may still hold
+ * for our MAC from an earlier session (box restarted mid-connection: the
+ * AP then deauthenticates the new attempt with reason 2 / 6) */
+static void send_deauth(void) {
+    unsigned char f[32], *p = hdr(f, 0x00c0, bssid, mac, bssid);
+
+    *p++ = 3;
+    *p++ = 0;
+    rtl_tx_mgmt(f, p - f);
+}
+
 static void send_auth(void) {
     unsigned char f[64], *p = hdr(f, 0x00b0, bssid, mac, bssid);
 
@@ -622,7 +633,7 @@ static void handle_frame(unsigned char *f, u32 len, int decrypted) {
         printf("assoc response: status %d, AID %d\n", status, aid);
         state = status ? S_FAIL : S_4WAY;
     } else if (type == 0 && (sub == 12 || sub == 10) && !memcmp(f + 10, bssid, 6) &&
-               state != S_IDLE && state != S_SCANALL) {
+               state != S_IDLE && state != S_SCANALL && state != S_SCAN) {
         printf("%s by the AP, reason %d\n", sub == 12 ? "DEAUTHENTICATED" : "DISASSOCIATED",
                 len >= 26 ? f[24] | (f[25] << 8) : -1);
         state = S_FAIL;
@@ -844,7 +855,12 @@ static int wlan_connect(const char *name, const char *pass) {
         rtl_set_tx_power(ap_channel);
     }
 
-    /* 2: authenticate, associate, 4-way handshake (resend on silence) */
+    /* 2: forget any old session, authenticate, associate, 4-way handshake
+     * (resend on silence) */
+    state = S_SCAN;                            /* an answering deauth is ignored */
+    send_deauth();
+    wlan_listen(100, 0);
+    state = S_AUTH;
     for (tries = 0; tries < 3 && state == S_AUTH; tries++) {
         send_auth();
         wlan_listen(500, 1);

@@ -452,6 +452,13 @@ static int ufs_remount(void) {
     if (!b || !b->usb_init) {
         return -1;
     }
+    if (b->usb_sel_port) {
+        /* as 'usb port 0': the stick's socket only. U-Boot's auto-detect
+         * would otherwise alternate to port 1 (the IPTV box's WiFi
+         * module, which the network service drives itself) */
+        REG32(b->usb_sel_port + ub_reloc_off()) = 0;
+        REG32(b->usb_port_fixed + ub_reloc_off()) = 1;
+    }
     for (i = 0; i < 3; i++) {
         ufs_lost = 0;
         ufs_bot_dev = 0;

@@ -40,19 +40,25 @@ struct ub_build {
     u32 usb_stop;               /* (void) */
     u32 usb_init;               /* (void) -> < 0 on failure */
     u32 usb_stor_scan;          /* (int mode) -> 0 = storage device 0 found */
+    /* auto_detect_usb_port (called by usb_init): root port in usb_sel_port
+     * (EHCI at 0xbf06 + port << 16); when usb_port_fixed is 0 it alternates
+     * between the ports that have a device. 'usb port N' sets both. 0 =
+     * not mapped for this build. */
+    u32 usb_sel_port;
+    u32 usb_port_fixed;
 };
 
 static const struct ub_build ub_builds[] = {
     { "IPTV box", 0x8017fc24u, "U-Boot 2012.04 (Nov 21 2022 - 10:42:10)",
       0x80122a78u, 0x80122cb4u, 0x80122d50u, 0x8012484cu, 0x80159c7cu,
       0x8014876cu, 0x80188af0u, UB_BOX_IPTV,
-      0x80123b74u, 0x80123bd0u, 0x801258fcu },
+      0x80123b74u, 0x80123bd0u, 0x801258fcu, 0x80188a5cu, 0x8018d688u },
     /* set_mode found (0x80149054, GOT entry 0x80189620), but its data
      * offsets differ from the IPTV build: vicset / regapply stay IPTV-only */
     { "satellite box", 0x801805c8u, "U-Boot 2012.04 (May 09 2026 - 09:21:12)",
       0x80123360u, 0x8012359cu, 0x80123638u, 0x80125134u, 0x8015a564u,
       0, 0, UB_BOX_SAT,
-      0x8012445cu, 0x801244b8u, 0x801261e4u },
+      0x8012445cu, 0x801244b8u, 0x801261e4u, 0, 0 },
 };
 
 static inline u32 ub_reloc_off(void) {
