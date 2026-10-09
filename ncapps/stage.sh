@@ -36,6 +36,27 @@ if [ "$(wc -c < "$NC/SETTINGS.TXT" 2>/dev/null)" != 512 ]; then
     rm -f "$NC/SETTINGS.TXT"
     put "$ROOT/ncapps/SETTINGS.TXT" "$NC/SETTINGS.TXT"
 fi
+# WiFi (IPTV box, Multitasking on): the chip's firmware from linux-firmware
+# (rtl8188fufw.bin in the project root, not in git) and the chosen network,
+# written on the box like SETTINGS.TXT. A new WIFI.TXT takes ssid= / psk=
+# from the stick's root WIFI.TXT (the rtl* tools' file) when there is one.
+put "$ROOT/rtl8188fufw.bin" "$NC/RTLWIFI.BIN"
+if [ "$(wc -c < "$NC/WIFI.TXT" 2>/dev/null)" != 512 ]; then
+    rm -f "$NC/WIFI.TXT"
+    ssid=
+    psk=
+    if [ -f "$DST/WIFI.TXT" ]; then
+        ssid=$(sed -n 's/^ssid=//p' "$DST/WIFI.TXT" | tr -d '\r' | head -n 1)
+        psk=$(sed -n 's/^psk=//p' "$DST/WIFI.TXT" | tr -d '\r' | head -n 1)
+    fi
+    printf '%s\n%s\n%s\non=1\nssid=%s\npsk=%s\n' "# NCAPPS wifi" \
+        "# Written by the launcher (SETTINGS > WiFi). on=0: WiFi off." \
+        "# The passphrase is stored as typed: keep this stick private." \
+        "$ssid" "$psk" > "$NC/WIFI.TXT"
+    head -c $((511 - $(wc -c < "$NC/WIFI.TXT"))) /dev/zero | tr '\0' '#' >> "$NC/WIFI.TXT"
+    printf '\n' >> "$NC/WIFI.TXT"
+    echo "  ok $NC/WIFI.TXT${ssid:+ (network from $DST/WIFI.TXT)}"
+fi
 
 for inf in "$ROOT"/ncapps/APPS/*/*.INF; do
     app=$(basename "$(dirname "$inf")")
@@ -64,6 +85,7 @@ put "$ROOT/tvapp.bin" "$NC/APPS/TVDEMO/APP.BIN"
 put "$ROOT/apps/sysinfo/SYSINFO.BIN" "$NC/APPS/SYSINFO/APP.BIN"
 put "$ROOT/apps/music/MUSIC.BIN" "$NC/APPS/MUSIC/APP.BIN"
 put "$ROOT/apps/midi/MIDI.BIN" "$NC/APPS/MIDI/APP.BIN"
+put "$ROOT/apps/nettest/NETTEST.BIN" "$NC/APPS/NETTEST/APP.BIN"
 # Optional, not in git: your own media / SoundFonts (see ncapps/local.sh.example)
 [ -f "$ROOT/ncapps/local.sh" ] && . "$ROOT/ncapps/local.sh"
 put "$ROOT/iptv/scripts/ncboot.scr" "$DST/ncboot.scr"

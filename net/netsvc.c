@@ -410,7 +410,7 @@ int net_scan(struct net_ap *list, int max) {
     scan_list = list;
     scan_max = max;
     net_send_cmd(CMD_SCAN);
-    if (xSemaphoreTake(scan_done, pdMS_TO_TICKS(15000)) != pdTRUE) {
+    if (xSemaphoreTake(scan_done, pdMS_TO_TICKS(25000)) != pdTRUE) {
         return -1;
     }
     return scan_n;

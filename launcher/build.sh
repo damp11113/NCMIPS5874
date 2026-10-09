@@ -14,4 +14,4 @@ CFLAGS_EXTRA="-Ilauncher -Irtos/port -I$K/include -Ihelix/mp3 \
 -Inet -Inet/port -I$L/include -Inet/lwip/port/include" \
 LOAD=0x80800000 MAX_END=0x80c00000 OBJ=build_launcher \
     sh sdk/build.sh launcher/LAUNCHER.BIN launcher/launcher.c launcher/system.c \
-    net/netsvc.c launcher/crash_entry.S rtos/port/port.c rtos/port/port_asm.S
+    launcher/wifiui.c net/netsvc.c launcher/crash_entry.S rtos/port/port.c rtos/port/port_asm.S

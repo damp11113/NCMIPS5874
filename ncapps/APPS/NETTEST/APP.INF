@@ -1,0 +1,3 @@
+name=Network test
+desc=WiFi check (needs Multitasking): OK pings the router, looks up example.com and fetches its page over HTTP. GREEN: TCP receive speed test on port 5001 (PC: python apps/nettest/tcpsend.py <box>). YELLOW: send speed test to the PC (tcprecv.py). BACK quits.
+bin=APP.BIN

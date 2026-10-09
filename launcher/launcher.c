@@ -63,6 +63,7 @@
 #include "port_ctx.h"
 #include "system.h"
 #include "netsvc.h"
+#include "wifiui.h"
 
 #define APPS_DIR        "/NCAPPS/APPS"
 #define DATA_DIR        "/NCAPPS/APPSDATA"
@@ -417,11 +418,22 @@ static void draw_music(int force) {
     }
 }
 
+/* WiFi state under the music line (system on, IPTV box) */
+static void draw_wifi(int force) {
+    char line[80];
+
+    if (wifi_status_line(line, sizeof(line)) || force) {
+        fb_rect(&fb, 540, 78, 400, 18, PANEL);
+        fb_text(&fb, 540, 80, line, 1, strncmp(line, "WiFi ", 5) ? GREY : GREEN, TRANSPARENT);
+    }
+}
+
 static void draw_header(void) {
     fb_rect(&fb, 0, 0, fb.w, 100, PANEL);
     fb_text(&fb, LIST_X, 30, "NCAPPS", 3, WHITE, TRANSPARENT);
     fb_text(&fb, LIST_X + 170, 44, "app launcher", 2, GREY, TRANSPARENT);
     draw_music(1);
+    draw_wifi(1);
     fb_rect(&fb, 0, 660, fb.w, 60, PANEL);
     fb_text(&fb, LIST_X, 680, "OK start  UP/DOWN select  SETTINGS about  EXIT firmware  POWER off",
              2, GREY, TRANSPARENT);
@@ -913,7 +925,7 @@ static int launch(const struct entry *e) {
 extern size_t heap_total;
 
 static void about(void) {
-    static const char *help[5][2] = {
+    static const char *help[6][2] = {
         { "CPU / memory / USB / audio bar at the top of the screen.",
           "MUTE on the remote switches it in any app." },
         { "Gives the AV core 8 MB video memory instead of 50: much more",
@@ -924,14 +936,16 @@ static void about(void) {
           "steady; 1080i (U-Boot's default) flickers on thin lines." },
         { "FreeRTOS: music from /MUSIC in the background (PLAY PAUSE STOP",
           "NEXT anywhere), pull / put back the stick. From the next start." },
+        { "Internal WiFi (needs Multitasking): OK to pick a network and type",
+          "the passphrase with the remote. Apps use it through sdk/net.h." },
     };
     static const u32 saver_steps[] = { 1, 5, 10, 30, 0 };
     /* Items shown: the satellite box has no big memory mode (its AV core
      * already leaves the upper 64 MB free); bigmem stays in SETTINGS.TXT
      * untouched for the IPTV box sharing the stick. */
-    static const int items_iptv[] = { 0, 1, 2, 3, 4 }, items_sat[] = { 0, 2, 3, 4 };
+    static const int items_iptv[] = { 0, 1, 2, 3, 4, 5 }, items_sat[] = { 0, 2, 3, 4 };
     const int *items = sdk_box_sat ? items_sat : items_iptv;
-    int nitems = sdk_box_sat ? 4 : 5;
+    int nitems = sdk_box_sat ? 4 : 6;
     int video_now = video_index(sdk_video_mode());
     struct sdk_key k;
     int redraw = 1, item = 0, i;
@@ -950,19 +964,19 @@ static void about(void) {
             fb_clear(&fb, BG);
             fb_rect(&fb, 0, 0, fb.w, 100, PANEL);
             fb_text(&fb, LIST_X, 30, "ABOUT", 3, WHITE, TRANSPARENT);
-            fb_text(&fb, LIST_X, 140, "NCAPPS", 5, WHITE, TRANSPARENT);
-            fb_text(&fb, LIST_X, 230, sdk_box_sat ?
+            fb_text(&fb, LIST_X, 120, "NCAPPS", 5, WHITE, TRANSPARENT);
+            fb_text(&fb, LIST_X, 205, sdk_box_sat ?
                      "App launcher and SDK, running on the satellite box" :
                      "App launcher and SDK for the NC5874 set-top box", 2,
                      RGB(220, 225, 235), TRANSPARENT);
-            fb_text(&fb, LIST_X, 264, sdk_box_sat ?
+            fb_text(&fb, LIST_X, 237, sdk_box_sat ?
                      "Montage M88CS8002B, MIPS 24KEc ~648 MHz, 128 MB, no OS" :
                      "Montage M88CS8051B, MIPS 24KEc ~648 MHz, 128 MB, no OS",
                      2, GREY, TRANSPARENT);
-            fb_text(&fb, LIST_X, 320, "Made by damp11113", 3, YELLOW, TRANSPARENT);
-            fb_text(&fb, LIST_X, 370, "github.com/damp11113/NCMIPS5874", 3, CYAN, TRANSPARENT);
+            fb_text(&fb, LIST_X, 280, "Made by damp11113", 3, YELLOW, TRANSPARENT);
+            fb_text(&fb, LIST_X, 326, "github.com/damp11113/NCMIPS5874", 3, CYAN, TRANSPARENT);
             snprintf(line, sizeof(line), "%d app entries    built %s", count, __DATE__);
-            fb_text(&fb, LIST_X + 440, 334, line, 2, GREY, TRANSPARENT);
+            fb_text(&fb, LIST_X + 440, 294, line, 2, GREY, TRANSPARENT);
 
             for (i = 0; i < nitems; i++) {
                 int y = 454 - (nitems - 4) * 32 + i * 32;
@@ -988,6 +1002,13 @@ static void about(void) {
                     snprintf(line, sizeof(line), "Multitasking:         %s  %s",
                               set_system ? "ON " : "OFF",
                               set_system == system_running() ? "" : "(after restart)");
+                } else if (items[i] == 5) {
+                    char w[64];
+
+                    wifi_status_line(w, sizeof(w));
+                    snprintf(line, sizeof(line), "WiFi:                 %s",
+                              !system_running() ? "needs Multitasking" :
+                              w[0] ? w + (w[4] == ':' ? 6 : 5) : "off");
                 } else if (set_bigmem == big_now) {
                     snprintf(line, sizeof(line), "Big memory:           %s  (heap %d MB)",
                               set_bigmem ? "ON " : "OFF", (int) (heap_total >> 20));
@@ -1028,6 +1049,10 @@ static void about(void) {
                 set_video = (set_video + 1) % 3;
             } else if (items[item] == 4) {
                 set_system = !set_system;
+            } else if (items[item] == 5) {
+                wifi_page(&fb);
+                redraw = 1;
+                continue;                           /* nothing to save here */
             } else {
                 for (i = 0; i < 4 && saver_steps[i] != sdk_saver_min; i++) {
                 }
@@ -1220,6 +1245,7 @@ static int ui_loop(void) {
         if (system_running() && ub_get_timer(music_ms) >= 500) {
             music_ms = ub_get_timer(0);
             draw_music(0);
+            draw_wifi(0);
         }
         if (redraw) {
             if (sel < top) {

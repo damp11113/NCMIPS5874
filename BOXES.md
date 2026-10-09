@@ -40,6 +40,7 @@ only the patch address differs (README "Video mode").
 | Soft standby / reboot | POWER, STANDBY wakes | POWER, front MENU wakes |
 | EXIT to the stock firmware | yes (with big memory: via restart) | yes |
 | WiFi (`rtl*` programs) | yes (internal RTL8188FTV) | no WiFi module (only a USB one would work) |
+| Network for apps (Multitasking on: `net/`, lwIP, `sdk/net.h`, SETTINGS > WiFi) | yes (verified: join, DHCP, ping) | - |
 | BriMod: ESP32-C3 bridge on the front I2C bus (`sdk/brimod.h`, `esp32c3/bridge/`) | - | optional: panel + front buttons through the bridge, clock (DS1302 / NTP), AHT20 + BMP280, SI4713 FM + RDS, WiFi; settings app BRIMOD; found at app start, the as-shipped panel path is used otherwise (built, not yet run) |
 | Hardware video decoding | experiments (`iptv/hooks/vdectest`) | not started |
 
@@ -56,6 +57,7 @@ only the patch address differs (README "Video mode").
 | `iptv/logs/` | IPTV box serial captures (gitignored) |
 | `sat/` | satellite box: `README.md` (photos, hardware, front panel, remote), `NOTES.md` (all findings), `scripts/` (boot script), `ubmatch.py`, logs; flash dump / U-Boot / firmware images (gitignored) |
 | `rtos/` | FreeRTOS kernel + our MIPS 24KEc port, QEMU test (`README.md`); box test app `apps/rtostest` |
+| `net/` | network service: WiFi (own EHCI driver `ehci.h`, `wlan.h`) + lwIP 2.2.1, `README.md`; test app `apps/nettest` |
 | `t2/` | third box (DVB-T2, ALi M3822, a dead end): `README.md` (photos, what was tried, lessons), `NOTES.md`, `spiflash.py` (FT232H flash reader / writer) |
 | `esp32c3/bridge/` | satellite box, BriMod only: `README.md` (photo, wiring, protocol), ESP32-C3 bridge firmware (Arduino; full register map in its header) |
 | `SSerHial/` | serial hub: box console over SSH + upload tool (gitignored, local only) |

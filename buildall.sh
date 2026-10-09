@@ -28,7 +28,7 @@ sh sdk/build.sh build_sdk/HELLO.BIN sdk/examples/hello.c || echo "FAILED hello"
 OBJ=build_i2cscan sh sdk/build.sh build_sdk/I2CSCAN.BIN sdk/examples/i2cscan.c || echo "FAILED i2cscan"
 sh launcher/build.sh || echo "FAILED launcher"
 [ -d doom/doomgeneric ] && [ -d doom/chocolate ] && { sh doom/build.sh || echo "FAILED doom"; }
-for app in sysinfo music midi brimod rtostest; do sh apps/$app/build.sh || echo "FAILED $app"; done
+for app in sysinfo music midi brimod rtostest nettest; do sh apps/$app/build.sh || echo "FAILED $app"; done
 # IPTV box boot scripts (flash layout and AV memory map of that box)
 S=iptv/scripts
 python3 mkscript.py $S/ncboot.txt $S/ncboot.scr || echo "FAILED ncboot.scr"
