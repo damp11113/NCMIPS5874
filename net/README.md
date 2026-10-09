@@ -67,3 +67,5 @@ launcher/LAUNCHER.BIN --addr 0x80800000` after the AV init lines of
 * Join + DHCP: address a few seconds after the launcher starts.
 * Ping from the PC: 0-6 ms (first ~200 ms with ARP), 1472-byte and
   fragmented 8000-byte packets fine.
+* NETTEST: ping router 1-8 ms, DNS 20 ms, TCP connect 20 ms, HTTP 200;
+  TCP receive ~1.9-2.0 MB/s, send ~1.4-1.5 MB/s.
