@@ -79,7 +79,7 @@ u32 sdk_bigmem_bytes;
 int sdk_box_sat;
 
 static void heap_regions(void) {
-    u32 limit = (u32) _start >= SDK_LAUNCHER_ADDR ? SDK_LAUNCHER_ADDR + 0x200000 : SDK_APP_END;
+    u32 limit = (u32) _start >= SDK_LAUNCHER_ADDR ? SDK_LAUNCHER_END : SDK_APP_END;
     const char *big = ub_getenv("nc_bigmem");
 
     if (sdk_box_sat) {
@@ -1460,4 +1460,101 @@ const char *sdk_btn_name(int btn) {
     };
 
     return (btn >= 0 && btn < (int) (sizeof(names) / sizeof(names[0]))) ? names[btn] : "?";
+}
+
+/* ---- network: through the system (@sys version 3), or in the launcher
+ * itself through the service it hosts (sdk_net_host) ---- */
+
+const struct sdk_net_ops *sdk_net_host;
+
+static const struct sdk_net_ops *net_ops(void) {
+    if (sdk_sys) {
+        return sdk_sys->version >= 3 ? sdk_sys->net : 0;
+    }
+    return sdk_net_host;
+}
+
+int sdk_net_info(struct sdk_net_info *info) {
+    const struct sdk_net_ops *n = net_ops();
+
+    memset(info, 0, sizeof(*info));
+    return n ? n->info(info) : SDK_NET_DOWN;
+}
+
+int sdk_net_ready(void) {
+    struct sdk_net_info i;
+
+    return sdk_net_info(&i) == 0 && i.state == SDK_NET_UP;
+}
+
+int sdk_net_resolve(const char *host, u32 *ip) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->resolve(host, ip) : SDK_NET_DOWN;
+}
+
+int sdk_tcp_connect(u32 ip, int port, int timeout_ms) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->tcp_connect(ip, port, timeout_ms) : SDK_NET_DOWN;
+}
+
+int sdk_tcp_listen(int port, int backlog) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->tcp_listen(port, backlog) : SDK_NET_DOWN;
+}
+
+int sdk_tcp_accept(int s, u32 *ip, int *port, int timeout_ms) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->tcp_accept(s, ip, port, timeout_ms) : SDK_NET_DOWN;
+}
+
+int sdk_udp_open(int port) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->udp_open(port) : SDK_NET_DOWN;
+}
+
+int sdk_net_send(int s, const void *data, int len) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->send(s, data, len) : SDK_NET_DOWN;
+}
+
+int sdk_net_recv(int s, void *buf, int len, int timeout_ms) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->recv(s, buf, len, timeout_ms) : SDK_NET_DOWN;
+}
+
+int sdk_net_sendto(int s, u32 ip, int port, const void *data, int len) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->sendto(s, ip, port, data, len) : SDK_NET_DOWN;
+}
+
+int sdk_net_recvfrom(int s, void *buf, int len, u32 *ip, int *port, int timeout_ms) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->recvfrom(s, buf, len, ip, port, timeout_ms) : SDK_NET_DOWN;
+}
+
+int sdk_net_close(int s) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->close(s) : SDK_NET_DOWN;
+}
+
+int sdk_net_ping(u32 ip, int timeout_ms) {
+    const struct sdk_net_ops *n = net_ops();
+
+    return n ? n->ping(ip, timeout_ms) : SDK_NET_DOWN;
+}
+
+char *sdk_ip_str(u32 ip, char *buf) {
+    snprintf(buf, 16, "%u.%u.%u.%u", (unsigned) (ip >> 24), (unsigned) (ip >> 16 & 255),
+             (unsigned) (ip >> 8 & 255), (unsigned) (ip & 255));
+    return buf;
 }

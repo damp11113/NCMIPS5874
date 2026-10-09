@@ -19,7 +19,8 @@
  * Memory map (physical; kseg0 = 0x80000000 + phys):
  *   0x00008000-0x007fffff  app image + .bss (loaded at 0x80008000); the
  *                          rest of it is heap (region 2)
- *   0x00800000-0x009fffff  launcher (NCAPPS/LAUNCHER.BIN at 0x80800000)
+ *   0x00800000-0x00bfffff  launcher (NCAPPS/LAUNCHER.BIN at 0x80800000) with
+ *                          its system: FreeRTOS, music, network (lwIP)
  *   0x00f00000-0x01580000  U-Boot (stack, gd, code): never touch
  *   0x01600000-0x043effff  heap (malloc), region 1, ~45 MB
  *   0x04400000-0x045c2fff  OSD plane (header + 1280x720x2 pixels)
@@ -44,6 +45,7 @@
 #define SDK_APP_ADDR    0x80008000u
 #define SDK_APP_END     0x80800000u     /* app image + .bss must end below */
 #define SDK_LAUNCHER_ADDR 0x80800000u
+#define SDK_LAUNCHER_END  0x80c00000u   /* launcher image + .bss + its heap */
 #define SDK_HEAP_START  0x81600000u
 #define SDK_HEAP_END    0x843f0000u
 extern u32 sdk_bigmem_bytes;                /* heap from the AV core's area, 0 = off */
@@ -205,6 +207,13 @@ void sdk_libc_reset(void);
 /* ---- NCAPPS system: the launcher running FreeRTOS (sdk/sys.h) ---- */
 
 #include "sys.h"
+
+/* ---- network (WiFi through the system, sdk/net.h) ---- */
+
+#include "net.h"
+
+/* For the launcher when it hosts the network service */
+extern const struct sdk_net_ops *sdk_net_host;
 
 /* The stick was pulled out or put back since this changed (with the
  * system, or the launcher's own hot-plug); files reopen on the new mount */

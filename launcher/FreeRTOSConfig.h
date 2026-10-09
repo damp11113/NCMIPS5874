@@ -12,7 +12,7 @@
 #define configMAX_TASK_NAME_LEN                 12
 #define configTICK_TYPE_WIDTH_IN_BITS           TICK_TYPE_WIDTH_32_BITS
 #define configIDLE_SHOULD_YIELD                 1
-#define configTOTAL_HEAP_SIZE                   (1024 * 1024)   /* inside the launcher's 2 MB area */
+#define configTOTAL_HEAP_SIZE                   (1536 * 1024)   /* inside the launcher's 4 MB area */
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 #define configSUPPORT_STATIC_ALLOCATION         0
 
@@ -29,6 +29,7 @@
 #define INCLUDE_vTaskDelay                      1
 #define INCLUDE_xTaskDelayUntil                 1
 #define INCLUDE_vTaskDelete                     1
+#define INCLUDE_vTaskPrioritySet                1
 #define INCLUDE_vTaskSuspend                    1
 #define INCLUDE_xTaskGetSchedulerState          1
 #define INCLUDE_uxTaskGetStackHighWaterMark     1

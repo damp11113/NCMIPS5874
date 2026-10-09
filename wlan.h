@@ -49,7 +49,21 @@ static int wlan_rx_on;
 #define WLAN_IDLE()     udelay(200)
 #endif
 
-enum { S_SCAN, S_AUTH, S_ASSOC, S_4WAY, S_DONE, S_FAIL };
+/* S_IDLE: chip up, not connected; S_SCANALL: wlan_scan running */
+enum { S_SCAN, S_AUTH, S_ASSOC, S_4WAY, S_DONE, S_FAIL, S_IDLE, S_SCANALL };
+
+/* Security of a network seen by wlan_scan */
+enum { WLAN_OPEN, WLAN_WEP_WPA1, WLAN_WPA2_PSK, WLAN_RSN_OTHER };
+
+/* wlan_scan: one call per beacon / probe response (same network repeats) */
+typedef void(*wlan_scan_fn) (const char *ssid, u32 ssid_len, const unsigned char *bssid,
+                             int channel, int rssi, int security);
+
+static wlan_scan_fn wlan_scan_cb;
+static int wlan_frame_rssi;             /* dBm of the frame being handled */
+static int wlan_rssi = -100;            /* our AP, smoothed */
+static u32 wlan_ap_seen;                /* get_timer of the last frame from our AP */
+static u32 wlan_rekeys;                 /* group key updates done */
 
 #ifndef RTL_EHCI
 static unsigned char wlan_rxbuf[WLAN_RX_SIZE] __attribute__((aligned(32)));
@@ -192,7 +206,10 @@ static int wlan_tx(const unsigned char *frame, u32 len, int sec, u32 rate) {
     return rtl_bulk_out(wlan_data_be ? 0x03 : 0x02, d, 40 + len, 1000);
 }
 
-static void send_probe(void) {
+static int wlan_send(const unsigned char *dst, u32 type, const unsigned char *data, u32 len);
+
+/* Probe request for name (n bytes; n = 0: any network) */
+static void send_probe_for(const char *name, u32 n) {
     static const unsigned char rates[] = {
         0x01, 0x08, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24,
         0x32, 0x04, 0x30, 0x48, 0x60, 0x6c,
@@ -200,12 +217,16 @@ static void send_probe(void) {
     unsigned char f[128], *p = hdr(f, 0x0040, bcast, mac, bcast);
 
     *p++ = 0;
-    *p++ = ssid_len;
-    memcpy(p, ssid, ssid_len);
-    p += ssid_len;
+    *p++ = n;
+    memcpy(p, name, n);
+    p += n;
     memcpy(p, rates, sizeof(rates));
     p += sizeof(rates);
     rtl_tx_mgmt(f, p - f);
+}
+
+static void send_probe(void) {
+    send_probe_for(ssid, ssid_len);
 }
 
 static void send_auth(void) {
@@ -291,7 +312,11 @@ static void send_eapol(u32 info, const unsigned char *replay, const unsigned cha
     }
     hmac_sha1(ptk, 16, e, elen, mic);
     memcpy(e + EK_MIC, mic, 16);
-    rtl_tx_mgmt(f, (e - f) + elen);
+    if (wlan_keys_on) {
+        wlan_send(bssid, 0x888e, e, elen);     /* keys in use: encrypted (rekeying) */
+    } else {
+        rtl_tx_mgmt(f, (e - f) + elen);
+    }
 }
 
 static void derive_ptk(void) {
@@ -345,6 +370,31 @@ static void find_gtk(const unsigned char *k, u32 n) {
     }
 }
 
+static void cam_write(u32 entry, u32 keyid, int group, const unsigned char *key);
+static void wlan_install_keys(void);
+
+/* Fresh SNonce: HMAC of the CPU cycle counter, MAC and PMK (two halves) */
+static void new_snonce(void) {
+    unsigned char in[32], hsh[20];
+    u32 c;
+    int i;
+
+    __asm__ volatile("mfc0 %0, $9" : "=r" (c));
+    memcpy(in, pmk, 16);
+    memcpy(in + 16, mac, 6);
+    for (i = 0; i < 4; i++) {
+        in[22 + i] = c >> (8 * i);
+    }
+    in[26] = 1;
+    hmac_sha1(pmk + 16, 16, in, 27, hsh);
+    memcpy(snonce, hsh, 20);
+    __asm__ volatile("mfc0 %0, $9" : "=r" (c));
+    in[26] = 2;
+    in[27] = c;
+    hmac_sha1(pmk + 16, 16, in, 28, hsh);
+    memcpy(snonce + 20, hsh, 12);
+}
+
 static void handle_eapol(unsigned char *e, u32 len) {
     u32 info, dlen, elen;
     static unsigned char kd[256];
@@ -363,8 +413,32 @@ static void handle_eapol(unsigned char *e, u32 len) {
         state = S_FAIL;
         return;
     }
+    if (!(info & KI_PAIRWISE) && (info & (KI_ACK | KI_MIC)) == (KI_ACK | KI_MIC)) {
+        /* group key handshake (the AP's periodic GTK update): message 1
+         * (encrypted by the AP, decrypted by the chip) carries the new GTK
+         * in its wrapped key data; install it, answer with message 2 */
+        if (!mic_ok(e, elen)) {
+            printf("EAPOL group 1/2: MIC wrong\n");
+            return;
+        }
+        if ((info & KI_ENC) && dlen >= 24 && dlen <= sizeof(kd) + 8 && !(dlen & 7) &&
+            aes_unwrap(ptk + 16, e + EK_DATA, dlen / 8 - 1, kd) == 0) {
+            gtk_len = 0;
+            find_gtk(kd, dlen - 8);
+            if (gtk_len >= 16 && gtk_id && wlan_keys_on) {
+                cam_write(gtk_id, gtk_id, 1, gtk);
+            }
+        }
+        send_eapol(KI_VER2 | KI_MIC | KI_SECURE, e + EK_REPLAY, 0, 0, 0);
+        wlan_rekeys++;
+        printf("EAPOL group key update: key id %d, %d bytes\n", gtk_id, gtk_len);
+        return;
+    }
     if ((info & (KI_PAIRWISE | KI_ACK | KI_MIC)) == (KI_PAIRWISE | KI_ACK)) {
         /* message 1: ANonce -> PTK, message 2 with SNonce + our RSN element */
+        if (wlan_keys_on) {
+            new_snonce();                       /* PTK rekey while connected */
+        }
         memcpy(anonce, e + EK_NONCE, 32);
         derive_ptk();
         send_eapol(KI_VER2 | KI_PAIRWISE | KI_MIC, e + EK_REPLAY, snonce, rsn_ie, sizeof(rsn_ie));
@@ -385,6 +459,11 @@ static void handle_eapol(unsigned char *e, u32 len) {
         }
         send_eapol(KI_VER2 | KI_PAIRWISE | KI_MIC | KI_SECURE, e + EK_REPLAY, 0, 0, 0);
         printf("EAPOL 3/4 received (MIC ok, GTK %d bytes, key id %d), 4/4 sent\n", gtk_len, gtk_id);
+        if (wlan_keys_on) {
+            wlan_install_keys();                /* PTK rekey: the new keys from now on */
+            wlan_pn = 1;
+            wlan_rekeys++;
+        }
         state = S_DONE;
     }
 }
@@ -425,10 +504,8 @@ static void handle_data(unsigned char *f, u32 len, u32 h, int decrypted) {
         return;                                 /* our own broadcast, sent back by the AP */
     }
     if (be16(p + 6) == 0x888e) {
-        if (!(f[1] & 0x40)) {
-            handle_eapol((unsigned char *) p + 8, n - 8);
-        }
-        return;                                 /* group rekey (encrypted) not handled yet */
+        handle_eapol((unsigned char *) p + 8, n - 8);   /* rekeying (encrypted) */
+        return;
     }
     wlan_rx_data++;
     if (wlan_rx_cb) {
@@ -452,6 +529,47 @@ static void handle_frame(unsigned char *f, u32 len, int decrypted) {
     type = (fc >> 2) & 3;
     sub = (fc >> 4) & 15;
 
+    if (state == S_DONE && !memcmp(f + 10, bssid, 6)) {
+        wlan_ap_seen = get_timer(0);            /* beacons keep this fresh */
+        if (wlan_frame_rssi > -100) {
+            wlan_rssi = (wlan_rssi * 7 + wlan_frame_rssi) / 8;
+        }
+    }
+    if (type == 0 && (sub == 5 || sub == 8) && state == S_SCANALL && len >= 36 && wlan_scan_cb) {
+        /* any network: SSID, channel, security */
+        const unsigned char *name = 0;
+        u32 nlen = 0;
+        int ch = 0, sec = (f[34] & 0x10) ? WLAN_WEP_WPA1 : WLAN_OPEN;
+
+        for (ie = f + 36; ie + 2 <= end && ie + 2 + ie[1] <= end; ie += 2 + ie[1]) {
+            if (ie[0] == 0 && ie[1] <= 32) {
+                name = ie + 2;
+                nlen = ie[1];
+            } else if (ie[0] == 3 && ie[1] == 1) {
+                ch = ie[2];
+            } else if (ie[0] == 48 && ie[1] >= 20) {
+                /* RSN: version, group cipher, pairwise list, AKM list: PSK? */
+                u32 npw = ie[8] | ie[9] << 8, a = 10 + 4 * npw;
+
+                sec = WLAN_RSN_OTHER;
+                if (a + 6 <= 2u + ie[1]) {
+                    u32 k, nakm = ie[a] | ie[a + 1] << 8;
+
+                    for (k = 0; k < nakm && a + 6 + 4 * k <= 2u + ie[1]; k++) {
+                        const unsigned char *s = ie + a + 2 + 4 * k;
+
+                        if (s[0] == 0x00 && s[1] == 0x0f && s[2] == 0xac && s[3] == 2) {
+                            sec = WLAN_WPA2_PSK;
+                        }
+                    }
+                }
+            }
+        }
+        if (name && nlen && name[0]) {
+            wlan_scan_cb((const char *) name, nlen, f + 16, ch, wlan_frame_rssi, sec);
+        }
+        return;
+    }
     if (type == 0 && (sub == 5 || sub == 8) && state == S_SCAN && len >= 36) {
         /* probe response / beacon: our SSID? */
         int match = 0, ch = 0, rsn = 0;
@@ -503,7 +621,8 @@ static void handle_frame(unsigned char *f, u32 len, int decrypted) {
 
         printf("assoc response: status %d, AID %d\n", status, aid);
         state = status ? S_FAIL : S_4WAY;
-    } else if (type == 0 && (sub == 12 || sub == 10)) {
+    } else if (type == 0 && (sub == 12 || sub == 10) && !memcmp(f + 10, bssid, 6) &&
+               state != S_IDLE && state != S_SCANALL) {
         printf("%s by the AP, reason %d\n", sub == 12 ? "DEAUTHENTICATED" : "DISASSOCIATED",
                 len >= 26 ? f[24] | (f[25] << 8) : -1);
         state = S_FAIL;
@@ -534,11 +653,48 @@ static void handle_rx(unsigned char *buf, int len) {
             break;
         }
         if (!(w0 & (3u << 14)) && !(w2 & (1u << 28))) {
+            wlan_frame_rssi = -100;
+            if ((w0 & (1u << 26)) && drvinfo >= 8) {
+                /* PHY status (Linux rtl8723au_rx_parse_phystats, rtl8188f_cck_rssi) */
+                const unsigned char *ps = buf + off + 24;
+                u32 rate = le32(buf + off + 12) & 0x7f;
+
+                if (rate < 4) {                 /* CCK */
+                    int lna = ps[5] >> 5, vga = ps[5] & 0x1f;
+
+                    wlan_frame_rssi = lna == 7 ? (vga <= 27 ? -100 + 2 * (27 - vga) : -100) :
+                                      lna == 5 ? -74 + 2 * (21 - vga) :
+                                      lna == 3 ? -60 + 2 * (20 - vga) :
+                                      lna == 1 ? -44 + 2 * (19 - vga) : -100;
+                } else {
+                    wlan_frame_rssi = (ps[4] >> 1) - 110;
+                }
+            }
             handle_frame(buf + off + 24 + drvinfo + shift, pktlen, decrypted);
         }
         off += (total + 127) & ~127u;
     }
 }
+
+#ifdef RTL_EHCI
+/* Handle the received buffers that are ready (never waits): how many */
+static int wlan_rx_pump(void) {
+    unsigned char *b;
+    u32 n;
+    int k = 0;
+
+    if (!wlan_rx_on) {
+        wlan_rx_on = ehci_rx_start(&rtl_hc, WLAN_RX_EP, WLAN_RX_RING, WLAN_RX_SIZE,
+                                   wlan_rxring) == 0;
+    }
+    while (k < WLAN_RX_RING && (b = ehci_rx_get(&rtl_hc, &n)) != 0) {
+        handle_rx(b, n);
+        ehci_rx_put(&rtl_hc);
+        k++;
+    }
+    return k;
+}
+#endif
 
 /* Receive for up to ms milliseconds, or until the state changes (join) */
 static void wlan_listen(u32 ms, int until_state_change) {
@@ -547,20 +703,9 @@ static void wlan_listen(u32 ms, int until_state_change) {
 
     while (get_timer(t0) < ms && (!until_state_change || state == s0)) {
 #ifdef RTL_EHCI
-        unsigned char *b;
-        u32 n;
-
-        if (!wlan_rx_on) {
-            wlan_rx_on = ehci_rx_start(&rtl_hc, WLAN_RX_EP, WLAN_RX_RING, WLAN_RX_SIZE,
-                                       wlan_rxring) == 0;
-        }
-        b = ehci_rx_get(&rtl_hc, &n);
-        if (!b) {
+        if (!wlan_rx_pump()) {
             WLAN_IDLE();
-            continue;
         }
-        handle_rx(b, n);
-        ehci_rx_put(&rtl_hc);
 #else
         int actual = 0;
 
@@ -579,24 +724,14 @@ static int wlan_poll(u32 ms, wlan_rx_fn rx) {
     return state == S_DONE ? 0 : -1;
 }
 
-/* Returns 0 when associated with keys negotiated, -1 (message printed) */
-static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt) {
-    u32 t0, c;
-    int r, ch, i, tries;
+/* Chip up: find it, eFuse MAC, init with the firmware, RF on. 0 / -1 */
+static int wlan_up(const unsigned char *fw, u32 fw_size) {
+    int r, i;
 
-    if (read_wifi_txt(wifi_txt) < 0) {
-        printf("WIFI.TXT: need ssid= and psk= lines\n");
-        return -1;
-    }
-    printf("network \"%s\", passphrase %d characters\n", ssid, (int) strlen(psk));
     if ((fw[1] << 8 | (fw[0] & 0xf0)) != 0x88f0) {
         printf("no RTL8188F firmware at %08x\n", (u32) fw);
         return -1;
     }
-    t0 = get_timer(0);
-    wpa_pmk(psk, (const unsigned char *) ssid, ssid_len, pmk);
-    printf("PMK computed in %d ms\n", (int) get_timer(t0));
-
     if (rtl_open() < 0) {
 #ifdef RTL_EHCI
         printf("No Realtek chip on the WiFi port.\n");
@@ -605,6 +740,9 @@ static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt)
 #endif
         return -1;
     }
+#ifdef RTL_EHCI
+    wlan_rx_on = 0;                            /* the controller was reset */
+#endif
     rtl_read_efuse();
     for (i = 0; i < 6; i++) {
         mac[i] = rtl_efuse[0xd7 + i];
@@ -618,26 +756,68 @@ static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt)
     rtl_set_mac(mac);
     wr8(0x0423, 0xff);                         /* HWSEQ_CTRL as Linux */
     rtl_enable_rf();
+    wlan_keys_on = 0;
+    state = S_IDLE;
+    return 0;
+}
 
-    /* SNonce: HMAC of the CPU cycle counter, MAC and PMK (two halves) */
-    {
-        unsigned char in[32], hsh[20];
-
-        __asm__ volatile("mfc0 %0, $9" : "=r" (c));
-        memcpy(in, pmk, 16);
-        memcpy(in + 16, mac, 6);
-        for (i = 0; i < 4; i++) {
-            in[22 + i] = c >> (8 * i);
-        }
-        in[26] = 1;
-        hmac_sha1(pmk + 16, 16, in, 27, hsh);
-        memcpy(snonce, hsh, 20);
-        __asm__ volatile("mfc0 %0, $9" : "=r" (c));
-        in[26] = 2;
-        in[27] = c;
-        hmac_sha1(pmk + 16, 16, in, 28, hsh);
-        memcpy(snonce + 20, hsh, 12);
+/* Keys out of the chip (before a new connection) */
+static void wlan_keys_off(void) {
+    if (wlan_keys_on) {
+        wr8(0x0680, 0);                        /* SECURITY_CFG off */
+        wr32(0x0670, (1u << 31) | (1u << 30)); /* clear the CAM */
+        wlan_keys_on = 0;
     }
+}
+
+/*
+ * Every network in reach: channels 1-13, a probe request for any network
+ * on each, then listen ms_per_channel. cb gets every beacon / probe
+ * response (the same network several times). Leaves the chip on channel
+ * 13, not connected (S_IDLE). Chip must be up (wlan_up).
+ */
+__attribute__((unused))
+static void wlan_scan(wlan_scan_fn cb, u32 ms_per_channel) {
+    int ch;
+
+    wlan_keys_off();
+    wlan_scan_cb = cb;
+    state = S_SCANALL;
+    for (ch = 1; ch <= 13; ch++) {
+        rtl_set_channel(ch);
+        rtl_set_tx_power(ch);
+        send_probe_for("", 0);
+        wlan_listen(ms_per_channel, 0);
+    }
+    state = S_IDLE;
+    wlan_scan_cb = 0;
+}
+
+/* Join network name with passphrase pass (WPA2-PSK, CCMP): scan for it,
+ * open auth, association, 4-way handshake. Chip must be up (wlan_up).
+ * 0 = connected (then wlan_install_keys), -1 (message printed). */
+static int wlan_connect(const char *name, const char *pass) {
+    u32 t0;
+    int ch, tries;
+
+    wlan_keys_off();
+    ssid_len = strlen(name) > 32 ? 32 : strlen(name);
+    memcpy(ssid, name, ssid_len);
+    ssid[ssid_len] = 0;
+    memcpy(psk, pass, strlen(pass) > 63 ? 63 : strlen(pass) + 1);
+    psk[63] = 0;
+    printf("network \"%s\", passphrase %d characters\n", ssid, (int) strlen(psk));
+    if (strlen(psk) < 8) {
+        printf("passphrase too short (WPA2 needs 8-63 characters)\n");
+        state = S_IDLE;
+        return -1;
+    }
+    t0 = get_timer(0);
+    wpa_pmk(psk, (const unsigned char *) ssid, ssid_len, pmk);
+    printf("PMK computed in %d ms\n", (int) get_timer(t0));
+    new_snonce();
+    ap_xrates[1] = 0;
+    gtk_len = 0;
 
     /* 1: find the network */
     state = S_SCAN;
@@ -651,10 +831,12 @@ static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt)
     }
     if (state != S_AUTH) {
         printf("\"%s\" not found\n", ssid);
+        state = S_IDLE;
         return -1;
     }
     if (!ap_rsn_ok) {
         printf("the network does not announce WPA2 - stopping\n");
+        state = S_IDLE;
         return -1;
     }
     if (ap_channel) {
@@ -681,10 +863,26 @@ static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt)
     }
     if (state != S_DONE) {
         printf("JOIN FAILED (state %d)\n", state);
+        state = S_IDLE;
         return -1;
     }
+    wlan_ap_seen = get_timer(0);
+    wlan_rssi = wlan_frame_rssi > -100 ? wlan_frame_rssi : -70;
     printf("CONNECTED to \"%s\"\n", ssid);
     return 0;
+}
+
+/* Returns 0 when associated with keys negotiated, -1 (message printed) */
+__attribute__((unused))
+static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt) {
+    if (read_wifi_txt(wifi_txt) < 0) {
+        printf("WIFI.TXT: need ssid= and psk= lines\n");
+        return -1;
+    }
+    if (wlan_up(fw, fw_size) < 0) {
+        return -1;
+    }
+    return wlan_connect(ssid, psk);
 }
 
 /*

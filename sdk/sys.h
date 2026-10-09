@@ -12,7 +12,9 @@
  *   claims the audio output on audio_start () (background music pauses)
  *                                   and gives it back when the app ends,
  *   hands a song to the background player with music_play (version 2:
- *                                   the MUSIC app on HOME).
+ *                                   the MUSIC app on HOME),
+ *   reaches the network through net (version 3: sdk/net.h; NULL on a
+ *                                   box without WiFi).
  * Started from U-Boot's go, or by a launcher without the system, there is
  * no "@sys=" and the runtime works alone as before.
  */
@@ -20,10 +22,11 @@
 #define SDK_SYS_H
 
 #define SDK_SYS_MAGIC       0x4e435359u     /* "NCSY" */
-#define SDK_SYS_VERSION     2       /* the table only grows: check version >= n
+#define SDK_SYS_VERSION     3       /* the table only grows: check version >= n
                                          * before using a field added in n */
 
 struct sdk_key;
+struct sdk_net_ops;
 
 struct sdk_sys {
     u32 magic, version;
@@ -40,6 +43,8 @@ struct sdk_sys {
      * (0 = start), showing ms as the time played, at volume % (0-100);
      * then the rest of its folder. Strings are copied. 0 = taken over. */
     int (*music_play)(const char *path, u32 offset, u32 ms, int volume);
+    /* version 3: network service (sdk/net.h), NULL = none */
+    const struct sdk_net_ops *net;
 };
 
 extern const struct sdk_sys *sdk_sys;           /* NULL: no system */

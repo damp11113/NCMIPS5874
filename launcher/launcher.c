@@ -62,6 +62,7 @@
 #include "sdk.h"
 #include "port_ctx.h"
 #include "system.h"
+#include "netsvc.h"
 
 #define APPS_DIR        "/NCAPPS/APPS"
 #define DATA_DIR        "/NCAPPS/APPSDATA"
@@ -546,7 +547,7 @@ static const char *where(u32 a, u32 *off) {
         *off = a - SDK_APP_ADDR;
         return "app";
     }
-    if (a >= SDK_LAUNCHER_ADDR && a < SDK_LAUNCHER_ADDR + 0x200000) {
+    if (a >= SDK_LAUNCHER_ADDR && a < SDK_LAUNCHER_END) {
         *off = a - SDK_LAUNCHER_ADDR;
         return "launcher";
     }
@@ -896,6 +897,9 @@ static int launch(const struct entry *e) {
         system_legacy_end();
     }
     in_app = 0;
+    if (system_running()) {
+        net_app_end();                             /* sockets it left open */
+    }
 
     /* The app used the same heap RAM and may have changed the screen */
     sdk_libc_reset();
@@ -1158,6 +1162,14 @@ int main(int argc, char *argv[]) {
         set_video = 2;
     }
     read_kv(SETTINGS_PATH, settings_field, 0);
+    {
+        const char *sys = ub_getenv("nc_system");      /* U-Boot env: test override */
+
+        if (sys && (sys[0] == '0' || sys[0] == '1')) {
+            set_system = sys[0] == '1';
+            printf("launcher: nc_system=%c from the U-Boot environment\n", sys[0]);
+        }
+    }
     scan();
     splash_on = 0;
     if (set_system) {

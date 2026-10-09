@@ -21,6 +21,7 @@ int ub_getc(void);
 int ub_tstc(void);
 void ub_udelay(unsigned long us);
 unsigned long ub_get_timer(unsigned long base);
+char *ub_getenv(const char *name);
 #define getc        ub_getc
 #define tstc        ub_tstc
 #define udelay      ub_udelay

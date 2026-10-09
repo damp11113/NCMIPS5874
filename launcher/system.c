@@ -3,6 +3,8 @@
  * launcher's settings ("Multitasking", system=1 in SETTINGS.TXT).
  *
  * Tasks (higher number = higher priority):
+ *   tcpip  3   lwIP (net/netsvc.c): the network for apps (IPTV box WiFi)
+ *   net    2   WiFi: joins, receives, joins again after a loss
  *   music  4   background MP3 player: /MUSIC, or the folder of a song the
  *              MUSIC app hands over on HOME (PLAY / PAUSE / STOP / NEXT on
  *              the remote, anywhere, unless an app has the audio)
@@ -26,6 +28,7 @@
 #include "port_ctx.h"
 #include "mp3stream.h"
 #include "system.h"
+#include "netsvc.h"
 
 #define PRIO_UI         1
 #define PRIO_USB        3
@@ -423,10 +426,10 @@ static int sys_key_read(struct sdk_key *k) {
 
 /* ---- the service table for apps ---- */
 
-static const struct sdk_sys sys_table = {
+static struct sdk_sys sys_table = {
     SDK_SYS_MAGIC, SDK_SYS_VERSION, sys_key_read, rtos_idle, rtos_idle_ticks, sdk_raw_read,
     sdk_raw_write, sdk_storage_gen, sdk_storage_present, sys_audio_claim, sys_audio_release,
-    sys_music_play,
+    sys_music_play, 0,
 };
 
 void system_app_arg(char *buf, int n) {
@@ -484,6 +487,7 @@ static void usb_entry(void *arg) {
 static void ui_entry(void *arg) {
     (void) arg;
     ui_rc = ui_fn();
+    net_service_stop();                     /* WiFi chip off for the stock firmware */
     vTaskEndScheduler();
     for (;;) {
     }
@@ -510,13 +514,14 @@ int system_run(int (*ui)(void)) {
         sdk_timer_release();
         return -1;
     }
+    sys_table.net = net_service_start();
     sdk_idle_hook = rtos_idle;
     sdk_idle_source = rtos_idle_ticks;
     sdk_key_source = sys_key_read;
     sdk_hotplug = 1;
     running = 1;
-    printf("system: FreeRTOS %s, multitasking on (music, USB hot-plug)\n",
-           tskKERNEL_VERSION_NUMBER);
+    printf("system: FreeRTOS %s, multitasking on (music, USB hot-plug%s)\n",
+           tskKERNEL_VERSION_NUMBER, sys_table.net ? ", WiFi" : "");
     vTaskStartScheduler();
     /* the UI returned: plain launcher again (it boots the stock firmware) */
     sdk_timer_release();
@@ -526,6 +531,7 @@ int system_run(int (*ui)(void)) {
     sdk_idle_source = 0;
     sdk_key_source = 0;
     sdk_hotplug = 0;
+    sdk_net_host = 0;
     usb_mutex = 0;
     return ui_rc;
 }
