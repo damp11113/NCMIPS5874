@@ -6,7 +6,9 @@
  *
  * RTL8188FTV (USB WiFi, 0bda:f179, internal module on root port 1) driver
  * pieces, ported onto U-Boot's USB stack (ubusb.h). Run 'usb port 1;
- * usb reset' first.
+ * usb reset' first. With RTL_EHCI defined it uses our own EHCI driver
+ * (ehci.h) on the WiFi port's controller instead: no 'usb port 1' needed,
+ * U-Boot keeps the stick.
  *
  * Register access: vendor control request 0x05, type 0xc0 read / 0x40
  * write, value = register address, index 0.
@@ -19,7 +21,11 @@
 #define RTL8188_H
 
 #include "uboot.h"
+#ifdef RTL_EHCI
+#include "ehci.h"
+#else
 #include "ubusb.h"
+#endif
 
 #define RTL_VID                 0x0bda
 
@@ -54,6 +60,19 @@
 #define RTL_EFUSE_LEN           512
 
 static void *rtl;
+#ifdef RTL_EHCI
+static struct ehci rtl_hc;
+#define rtl_ctrl(req, type, val, idx, data, len, ms)     ehci_control(&rtl_hc, (req), (type), (val), (idx), (data), (len), (ms))
+/* bulk OUT: 0 sent / -1 */
+#define rtl_bulk_out(ep, data, len, ms)     (ehci_bulk(&rtl_hc, (ep), (data), (len), (ms)) < 0 ? -1 : 0)
+#else
+#define rtl_ctrl(req, type, val, idx, data, len, ms)     ub_control(rtl, (req), (type), (val), (idx), (data), (len), (ms))
+static inline int rtl_bulk_out(u32 ep, void *data, u32 len, u32 ms) {
+    int actual;
+
+    return ub_bulk(rtl, ep, data, len, &actual, ms) < 0 ? -1 : 0;
+}
+#endif
 static unsigned char rtl_io[RTL_WRITEN_BLOCK] __attribute__((aligned(32)));
 static unsigned char rtl_efuse[RTL_EFUSE_LEN];
 
@@ -62,7 +81,7 @@ static unsigned char rtl_efuse[RTL_EFUSE_LEN];
 static inline int rtl_read(u32 reg, int len, u32 *val) {
     int i;
 
-    if (ub_control(rtl, 0x05, 0xc0, reg, 0, rtl_io, len, 500) < 0) {
+    if (rtl_ctrl(0x05, 0xc0, reg, 0, rtl_io, len, 500) < 0) {
         return -1;
     }
     *val = 0;
@@ -78,7 +97,7 @@ static inline int rtl_write(u32 reg, int len, u32 val) {
     for (i = 0; i < len; i++) {
         rtl_io[i] = val >> (8 * i);
     }
-    return ub_control(rtl, 0x05, 0x40, reg, 0, rtl_io, len, 500) < 0 ? -1 : 0;
+    return rtl_ctrl(0x05, 0x40, reg, 0, rtl_io, len, 500) < 0 ? -1 : 0;
 }
 
 static inline u32 rd8(u32 reg) {
@@ -114,7 +133,7 @@ static inline int rtl_writeN(u32 addr, const unsigned char *buf, u32 len) {
         for (i = 0; i < k; i++) {
             rtl_io[i] = buf[i];
         }
-        if (ub_control(rtl, 0x05, 0x40, addr, 0, rtl_io, k, 500) != (int) k) {
+        if (rtl_ctrl(0x05, 0x40, addr, 0, rtl_io, k, 500) != (int) k) {
             return -1;
         }
         addr += k;
@@ -126,6 +145,13 @@ static inline int rtl_writeN(u32 addr, const unsigned char *buf, u32 len) {
 
 /* Find the chip; returns 0 or -1 */
 static inline int rtl_open(void) {
+#ifdef RTL_EHCI
+    if (ehci_open(&rtl_hc, EHCI_WIFI_BASE, RTL_VID, 0) < 0) {
+        return -1;
+    }
+    rtl = &rtl_hc;
+    return 0;
+#else
     int i;
 
     for (i = 0; i < UB_USB_MAX_DEVICE; i++) {
@@ -137,6 +163,7 @@ static inline int rtl_open(void) {
         }
     }
     return -1;
+#endif
 }
 
 /* ---- eFuse (rtl8xxxu_read_efuse / read_efuse8) ------------------------ */
@@ -717,7 +744,6 @@ static unsigned char rtl_txbuf[40 + 2048] __attribute__((aligned(32)));
 static inline int rtl_tx_mgmt(const unsigned char *frame, u32 len) {
     unsigned char *d = rtl_txbuf;
     u32 i, w, csum = 0;
-    int actual;
 
     if (len > 2048) {
         return -1;
@@ -752,7 +778,7 @@ static inline int rtl_tx_mgmt(const unsigned char *frame, u32 len) {
     for (i = 0; i < len; i++) {
         d[40 + i] = frame[i];
     }
-    return ub_bulk(rtl, 0x02, d, 40 + len, &actual, 1000) < 0 ? -1 : 0;
+    return rtl_bulk_out(0x02, d, 40 + len, 1000);
 }
 
 /* rtl8188fu_config_channel, 20 MHz, without spur calibration */

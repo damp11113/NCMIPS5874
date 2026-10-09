@@ -38,9 +38,22 @@ unsigned int strlen(const char *s);
 #define WLAN_RX_EP      0x81
 #define WLAN_RX_SIZE    8192
 
+#ifdef RTL_EHCI
+/* own EHCI: 8 bulk IN buffers always queued, polled without waiting */
+#define WLAN_RX_RING    8
+static unsigned char wlan_rxring[WLAN_RX_RING * WLAN_RX_SIZE] __attribute__((aligned(4096)));
+static int wlan_rx_on;
+#endif
+/* Called while wlan_listen has nothing to do (an RTOS gives the CPU away) */
+#ifndef WLAN_IDLE
+#define WLAN_IDLE()     udelay(200)
+#endif
+
 enum { S_SCAN, S_AUTH, S_ASSOC, S_4WAY, S_DONE, S_FAIL };
 
+#ifndef RTL_EHCI
 static unsigned char wlan_rxbuf[WLAN_RX_SIZE] __attribute__((aligned(32)));
+#endif
 static unsigned char mac[6], bssid[6];
 static u32 seq;
 static int state, ap_channel;
@@ -141,7 +154,6 @@ static unsigned char *hdr(unsigned char *f, u32 fc, const unsigned char *a1,
 static int wlan_tx(const unsigned char *frame, u32 len, int sec, u32 rate) {
     unsigned char *d = rtl_txbuf;
     u32 i, w, csum = 0;
-    int actual;
 
     if (len > 2048) {
         return -1;
@@ -177,7 +189,7 @@ static int wlan_tx(const unsigned char *frame, u32 len, int sec, u32 rate) {
     for (i = 0; i < len; i++) {
         d[40 + i] = frame[i];
     }
-    return ub_bulk(rtl, wlan_data_be ? 0x03 : 0x02, d, 40 + len, &actual, 1000) < 0 ? -1 : 0;
+    return rtl_bulk_out(wlan_data_be ? 0x03 : 0x02, d, 40 + len, 1000);
 }
 
 static void send_probe(void) {
@@ -534,12 +546,29 @@ static void wlan_listen(u32 ms, int until_state_change) {
     int s0 = state;
 
     while (get_timer(t0) < ms && (!until_state_change || state == s0)) {
+#ifdef RTL_EHCI
+        unsigned char *b;
+        u32 n;
+
+        if (!wlan_rx_on) {
+            wlan_rx_on = ehci_rx_start(&rtl_hc, WLAN_RX_EP, WLAN_RX_RING, WLAN_RX_SIZE,
+                                       wlan_rxring) == 0;
+        }
+        b = ehci_rx_get(&rtl_hc, &n);
+        if (!b) {
+            WLAN_IDLE();
+            continue;
+        }
+        handle_rx(b, n);
+        ehci_rx_put(&rtl_hc);
+#else
         int actual = 0;
 
         if (ub_bulk(rtl, WLAN_RX_EP, wlan_rxbuf, WLAN_RX_SIZE, &actual, 200) < 0) {
             continue;
         }
         handle_rx(wlan_rxbuf, actual);
+#endif
     }
 }
 
@@ -569,7 +598,11 @@ static int wlan_join(const unsigned char *fw, u32 fw_size, const char *wifi_txt)
     printf("PMK computed in %d ms\n", (int) get_timer(t0));
 
     if (rtl_open() < 0) {
+#ifdef RTL_EHCI
+        printf("No Realtek chip on the WiFi port.\n");
+#else
         printf("No Realtek chip. Run 'usb port 1' and 'usb reset' first.\n");
+#endif
         return -1;
     }
     rtl_read_efuse();

@@ -8,6 +8,9 @@
  *   usb tree
  *   go ${a}
  *
+ * Built with EXTRA_CFLAGS=-DRTL_EHCI (rtlhelloe.bin) it uses our own EHCI
+ * driver (ehci.h) on the WiFi controller: just 'go ${a}', no 'usb port 1'.
+ *
  * Prints chip ID/version (REG_SYS_CFG 0xf0), a register dump and the
  * decoded eFuse map. 8188F eFuse layout (Linux struct rtl8188fu_efuse):
  * VID/PID at 0xd0, MAC at 0xd7. Read-only apart from the eFuse power/clock
@@ -24,8 +27,10 @@ int main(int argc, char *argv[]) {
         printf("No Realtek (0bda:xxxx) device. Did you run 'usb port 1' + 'usb reset'?\n");
         return 1;
     }
+#ifndef RTL_EHCI
     printf("Realtek %04x:%04x, devnum %d, speed %d\n",
             UB_DEV_VID(rtl), UB_DEV_PID(rtl), UB_DEV_DEVNUM(rtl), UB_DEV_SPEED(rtl));
+#endif
 
     cfg = rd32(REG_SYS_CFG);
     printf("REG_SYS_CFG (0xf0) = %08x  (chip version bits 12-15: %d)\n",
@@ -56,9 +61,8 @@ int main(int argc, char *argv[]) {
         }
         printf("\n");
     }
-    printf("eFuse VID/PID at 0xd0: %02x%02x:%02x%02x (USB says %04x:%04x)\n",
-            rtl_efuse[0xd1], rtl_efuse[0xd0], rtl_efuse[0xd3], rtl_efuse[0xd2],
-            UB_DEV_VID(rtl), UB_DEV_PID(rtl));
+    printf("eFuse VID/PID at 0xd0: %02x%02x:%02x%02x\n",
+            rtl_efuse[0xd1], rtl_efuse[0xd0], rtl_efuse[0xd3], rtl_efuse[0xd2]);
     printf("MAC address (eFuse 0xd7): %02x:%02x:%02x:%02x:%02x:%02x\n",
             rtl_efuse[0xd7], rtl_efuse[0xd8], rtl_efuse[0xd9], rtl_efuse[0xda],
             rtl_efuse[0xdb], rtl_efuse[0xdc]);
