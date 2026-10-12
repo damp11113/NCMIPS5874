@@ -1,0 +1,3 @@
+name=TJC video player
+desc=Plays .TJC videos (tiled-JPEG video + QOA audio) from the app folder or /VIDEO. OK pause, LEFT/RIGHT volume, BLUE zoom, YELLOW colour matrix, INFO statistics, BACK stop.
+bin=APP.BIN

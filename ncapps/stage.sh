@@ -86,6 +86,7 @@ put "$ROOT/apps/sysinfo/SYSINFO.BIN" "$NC/APPS/SYSINFO/APP.BIN"
 put "$ROOT/apps/music/MUSIC.BIN" "$NC/APPS/MUSIC/APP.BIN"
 put "$ROOT/apps/midi/MIDI.BIN" "$NC/APPS/MIDI/APP.BIN"
 put "$ROOT/apps/nettest/NETTEST.BIN" "$NC/APPS/NETTEST/APP.BIN"
+put "$ROOT/apps/tjcplay/TJCPLAY.BIN" "$NC/APPS/TJCPLAY/APP.BIN"
 # Optional, not in git: your own media / SoundFonts (see ncapps/local.sh.example)
 [ -f "$ROOT/ncapps/local.sh" ] && . "$ROOT/ncapps/local.sh"
 put "$ROOT/iptv/scripts/ncboot.scr" "$DST/ncboot.scr"
